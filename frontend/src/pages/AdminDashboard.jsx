@@ -613,7 +613,8 @@ export default function AdminDashboard() {
                                             <th className="p-3">Token</th>
                                             <th className="p-3">Patient</th>
                                             <th className="p-3">Status</th>
-                                            <th className="p-3">Time</th>
+                                            <th className="p-3">Date</th>
+                                            <th className="p-3">Duration</th>
                                             <th className="p-3">Doctor</th>
                                             <th className="p-3">Action</th>
                                         </tr>
@@ -622,35 +623,51 @@ export default function AdminDashboard() {
                                         {history.filter(h =>
                                             h.patient_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                             h.token_number?.toLowerCase().includes(searchTerm.toLowerCase())
-                                        ).map(h => (
-                                            <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="p-3 font-bold text-slate-800">{h.token_number}</td>
-                                                <td className="p-3 text-slate-600">{h.patient_name}</td>
-                                                <td className="p-3">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold border ${h.status === 'completed' ? 'bg-[#065590]/5 text-[#065590] border-[#065590]/20' :
-                                                        h.status === 'no_show' ? 'bg-red-50 text-red-700 border-red-100' :
-                                                            'bg-slate-100 text-slate-600 border-slate-200'
-                                                        }`}>
-                                                        {h.status}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3 font-mono text-slate-500">
-                                                    {new Date(h.created_at).toLocaleString()}
-                                                </td>
-                                                <td className="p-3 text-slate-600">
-                                                    {users.find(u => u.id === h.doctor_id)?.username || '-'}
-                                                </td>
-                                                <td className="p-3">
-                                                    <button onClick={() => {
-                                                        if (confirm('Delete record?')) {
-                                                            fetch(`${API_URL}/history/${h.id}`, { method: 'DELETE', headers: authHeader }).then(() => {
-                                                                fetchHistory();
-                                                            })
-                                                        }
-                                                    }} className="text-red-400 hover:text-red-600">🗑️</button>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        ).map(h => {
+                                            // Calculate Duration
+                                            let duration = '-';
+                                            if (h.called_at && h.completed_at) {
+                                                const start = new Date(h.called_at);
+                                                const end = new Date(h.completed_at);
+                                                const diffMs = end - start;
+                                                const diffMins = Math.floor(diffMs / 60000);
+                                                const diffSecs = Math.floor((diffMs % 60000) / 1000);
+                                                duration = `${diffMins}m ${diffSecs}s`;
+                                            }
+
+                                            return (
+                                                <tr key={h.id} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="p-3 font-bold text-slate-800">{h.token_number}</td>
+                                                    <td className="p-3 text-slate-600">{h.patient_name}</td>
+                                                    <td className="p-3">
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-bold border ${h.status === 'completed' ? 'bg-[#065590]/5 text-[#065590] border-[#065590]/20' :
+                                                            h.status === 'no_show' ? 'bg-red-50 text-red-700 border-red-100' :
+                                                                'bg-slate-100 text-slate-600 border-slate-200'
+                                                            }`}>
+                                                            {h.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 font-mono text-slate-500">
+                                                        {new Date(h.created_at).toLocaleString()}
+                                                    </td>
+                                                    <td className="p-3 font-mono text-slate-700 font-bold">
+                                                        {duration}
+                                                    </td>
+                                                    <td className="p-3 text-slate-600">
+                                                        {users.find(u => u.id === h.doctor_id)?.username || '-'}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <button onClick={() => {
+                                                            if (confirm('Delete record?')) {
+                                                                fetch(`${API_URL}/history/${h.id}`, { method: 'DELETE', headers: authHeader }).then(() => {
+                                                                    fetchHistory();
+                                                                })
+                                                            }
+                                                        }} className="text-red-400 hover:text-red-600">🗑️</button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

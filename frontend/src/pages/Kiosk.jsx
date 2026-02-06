@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import io from 'socket.io-client';
+
+const API_URL = "http://" + window.location.hostname + ":8000";
+const socket = io(API_URL);
 
 export default function Kiosk() {
     const { user, logout } = useAuth();
@@ -53,18 +57,29 @@ export default function Kiosk() {
         fetchReferenceData();
     }, []);
 
+    // Unified Fetch Function
+    const refreshData = () => {
+        if (activeTab === 'list') fetchQueue();
+        else if (activeTab === 'calling' || activeTab === 'completed') fetchLists();
+        else if (activeTab === 'noshow') fetchNoShows();
+    };
+
     useEffect(() => {
-        let interval;
-        if (activeTab === 'list') {
-            fetchQueue();
-            interval = setInterval(fetchQueue, 5000);
-        } else if (activeTab === 'calling' || activeTab === 'completed') {
-            fetchLists();
-            interval = setInterval(fetchLists, 5000);
-        } else if (activeTab === 'noshow') {
-            fetchNoShows();
-        }
-        return () => clearInterval(interval);
+        // Initial fetch
+        refreshData();
+
+        // Socket Listeners
+        socket.on('queue_update', refreshData);
+        socket.on('call_patient', refreshData);
+
+        // Fallback Polling
+        const interval = setInterval(refreshData, 10000);
+
+        return () => {
+            clearInterval(interval);
+            socket.off('queue_update', refreshData);
+            socket.off('call_patient', refreshData);
+        };
     }, [activeTab]);
 
     useEffect(() => {
@@ -108,7 +123,7 @@ export default function Kiosk() {
 
     const fetchQueue = async () => {
         try {
-            const res = await fetch('http://localhost:8000/queue');
+            const res = await fetch(`http://localhost:8000/queue?t=${Date.now()}`);
             const data = await res.json();
             setWaitingList(data.filter(p => p.status === 'waiting'));
         } catch (e) { console.error(e); }
@@ -117,8 +132,8 @@ export default function Kiosk() {
     const fetchLists = async () => {
         try {
             const [resCall, resComp] = await Promise.all([
-                fetch('http://localhost:8000/history?status=calling'),
-                fetch('http://localhost:8000/history?status=completed')
+                fetch(`http://localhost:8000/history?status=calling&t=${Date.now()}`),
+                fetch(`http://localhost:8000/history?status=completed&t=${Date.now()}`)
             ]);
             setCallingList(await resCall.json());
             setCompletedList(await resComp.json());
@@ -127,7 +142,7 @@ export default function Kiosk() {
 
     const fetchNoShows = async () => {
         try {
-            const res = await fetch('http://localhost:8000/history?status=no-show');
+            const res = await fetch(`http://localhost:8000/history?status=no-show&t=${Date.now()}`);
             setNoShowList(await res.json());
         } catch (e) { console.error(e); }
     };
@@ -146,7 +161,8 @@ export default function Kiosk() {
                     patient_id: selectedPatientId,
                     priority_id: priority,
                     target_dept: visitType === 'procedure' ? 'Radiology & Laboratory' : dept,
-                    target_room: visitType === 'procedure' ? procedures.find(p => p.name === procedure)?.room : room
+                    target_room: visitType === 'procedure' ? procedures.find(p => p.name === procedure)?.room : room,
+                    doctor_id: selectedDoctorId || null
                 })
             });
 
@@ -421,7 +437,7 @@ export default function Kiosk() {
                     <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col h-[600px]">
                         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                             <h2 className="font-bold text-xl text-slate-800 capitalize">{activeTab === 'list' ? 'Waiting Queue' : activeTab.replace('-', ' ')}</h2>
-                            <button onClick={() => activeTab === 'list' ? fetchQueue() : activeTab === 'noshow' ? fetchNoShows() : fetchLists()} className="text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 font-medium text-slate-600">
+                            <button onClick={refreshData} className="text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm hover:bg-slate-50 font-medium text-slate-600 transition-colors active:bg-slate-100">
                                 ↻ Refresh
                             </button>
                         </div>
@@ -432,9 +448,9 @@ export default function Kiosk() {
                                     <tr>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Token</th>
                                         <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Patient</th>
-                                        {activeTab === 'list' && <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Priority</th>}
-                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Time</th>
-                                        {activeTab === 'calling' && <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Room</th>}
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Doctor</th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Room</th>
+                                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Status</th>
                                         {activeTab === 'noshow' && <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wide">Action</th>}
                                     </tr>
                                 </thead>
@@ -444,24 +460,31 @@ export default function Kiosk() {
                                             <td className={`p-4 font-bold text-lg ${p.token_number.startsWith('E') ? 'text-red-600' : p.token_number.startsWith('V') ? 'text-purple-600' : 'text-slate-700'}`}>
                                                 {p.token_number}
                                             </td>
-                                            <td className="p-4 font-medium text-slate-700">{p.patient_name}</td>
-
-                                            {activeTab === 'list' && (
-                                                <td className="p-4">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${p.priority_id === 1 ? 'bg-red-100 text-red-700' :
-                                                        p.priority_id === 2 ? 'bg-purple-100 text-purple-700' :
-                                                            'bg-[#065590]/10 text-[#065590]'
-                                                        }`}>
-                                                        {priorities.find(pr => pr.id === p.priority_id)?.name || 'Standard'}
-                                                    </span>
-                                                </td>
-                                            )}
-
-                                            <td className="p-4 text-slate-500 text-sm font-mono">
-                                                {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            <td className="p-4 font-medium text-slate-700">
+                                                <div className="flex flex-col">
+                                                    <span>{p.patient_name}</span>
+                                                    {p.priority_id !== 3 && (
+                                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${p.priority_id === 1 ? 'text-red-500' : 'text-purple-500'}`}>
+                                                            {priorities.find(pr => pr.id === p.priority_id)?.name}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
-
-                                            {activeTab === 'calling' && <td className="p-4 font-bold text-slate-800">Room {p.room_number}</td>}
+                                            <td className="p-4 text-slate-600 font-medium">
+                                                {p.doctor_name ? `Dr. ${p.doctor_name}` : <span className="text-slate-400 italic">--</span>}
+                                            </td>
+                                            <td className="p-4 text-slate-600 font-bold">
+                                                {p.room_number || p.target_room || <span className="text-slate-400 italic">--</span>}
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${p.status === 'waiting' ? 'bg-sky-100 text-sky-700' :
+                                                    p.status === 'calling' ? 'bg-green-100 text-green-700' :
+                                                        p.status === 'completed' ? 'bg-slate-100 text-slate-600' :
+                                                            'bg-red-100 text-red-700'
+                                                    }`}>
+                                                    {p.status}
+                                                </span>
+                                            </td>
 
                                             {activeTab === 'noshow' && (
                                                 <td className="p-4">

@@ -6,6 +6,8 @@ const socket = io(API_URL);
 
 export default function Display() {
     const [callingList, setCallingList] = useState([]);
+    const [waitingList, setWaitingList] = useState([]);
+    const [recentlyCalled, setRecentlyCalled] = useState(null); // Animation state
     const [currentTime, setCurrentTime] = useState(new Date());
     const params = new URLSearchParams(window.location.search);
     const floor = params.get('floor');
@@ -13,7 +15,8 @@ export default function Display() {
     const isPediatrics = department === 'Pediatrics';
 
     const groundFloorDepartments = ['Neurology', 'Cardiology', 'Procedure', 'Radiology & Laboratory'];
-    const firstFloorDepartments = ['Radiology', 'Pathology', 'Dermatology', 'Orthopedics', 'Pediatrics', 'General'];
+    // Expanded list to cover generated test data (ENT, Gynecology) and others from DB
+    const firstFloorDepartments = ['Radiology', 'Pathology', 'Dermatology', 'Orthopedics', 'Pediatrics', 'General', 'ENT', 'Gynecology', 'Urology', 'Internal Medicine', 'General Practitioner', 'General Surgeon', 'Family Medicine', 'Dentistry'];
 
     useEffect(() => {
         if (department) document.title = `Display - ${department}`;
@@ -21,14 +24,19 @@ export default function Display() {
         else document.title = 'Queue Display - All Floors';
 
         const timeInterval = setInterval(() => setCurrentTime(new Date()), 1000);
-        fetchCalling();
+        fetchData(); // Fetch both lists
 
         const handleCallPatient = (data) => {
-            fetchCalling();
+            // Filter events: only show if relevant to this display
+            if (!shouldShowPatient(data)) return;
+
+            fetchData();
             speak(data);
+            setRecentlyCalled(data);
+            setTimeout(() => setRecentlyCalled(null), 10000); // 10s Animation
         };
 
-        socket.on('queue_update', () => fetchCalling());
+        socket.on('queue_update', () => fetchData());
         socket.on('call_patient', handleCallPatient);
 
         return () => {
@@ -37,6 +45,19 @@ export default function Display() {
             socket.off('call_patient', handleCallPatient);
         };
     }, [floor, department]);
+
+    const shouldShowPatient = (data) => {
+        // data contains: token, room, department, name
+        if (!data || !data.department) return true; // Fallback if no dept info
+        if (department) {
+            return data.department.toLowerCase() === department.toLowerCase();
+        } else if (floor === 'ground') {
+            return groundFloorDepartments.includes(data.department);
+        } else if (floor === 'first') {
+            return firstFloorDepartments.includes(data.department);
+        }
+        return true; // All floors
+    };
 
     const speak = (data) => {
         if (!data) return;
@@ -53,21 +74,32 @@ export default function Display() {
         setTimeout(() => window.speechSynthesis.speak(utterance), 4000);
     };
 
-    const fetchCalling = async () => {
+    const fetchData = async () => {
         try {
-            const res = await fetch(`${API_URL}/history?status=calling&limit=100`);
-            const data = await res.json();
-            let filteredData = data;
+            // Fetch Calling List
+            const callingRes = await fetch(`${API_URL}/history?status=calling&limit=100&_t=${new Date().getTime()}`);
+            const callingData = await callingRes.json();
+            setCallingList(filterData(callingData));
 
-            if (department) {
-                filteredData = data.filter(p => p.department && p.department.toLowerCase() === department.toLowerCase());
-            } else if (floor === 'ground') {
-                filteredData = data.filter(p => groundFloorDepartments.includes(p.department));
-            } else if (floor === 'first') {
-                filteredData = data.filter(p => firstFloorDepartments.includes(p.department));
-            }
-            setCallingList(filteredData);
-        } catch (error) { console.error('Failed to fetch calling list:', error); }
+            // Fetch Waiting List (New)
+            const waitingRes = await fetch(`${API_URL}/queue?_t=${new Date().getTime()}`);
+            const waitingData = await waitingRes.json();
+            // Filter out VIPs (priority_id === 2) as they are "ghost" patients
+            const publicWaitingList = waitingData.filter(p => p.priority_id !== 2);
+            setWaitingList(filterData(publicWaitingList));
+
+        } catch (error) { console.error('Failed to fetch data:', error); }
+    };
+
+    const filterData = (data) => {
+        if (department) {
+            return data.filter(p => p.target_dept && p.target_dept.toLowerCase() === department.toLowerCase());
+        } else if (floor === 'ground') {
+            return data.filter(p => groundFloorDepartments.includes(p.target_dept));
+        } else if (floor === 'first') {
+            return data.filter(p => firstFloorDepartments.includes(p.target_dept));
+        }
+        return data; // All floors
     };
 
     const getFloorTitle = () => {
@@ -78,8 +110,8 @@ export default function Display() {
         return floor.charAt(0).toUpperCase() + floor.slice(1) + ' Floor';
     };
 
-    const mainList = callingList.slice(0, 18);
-    const overflowList = callingList.slice(18);
+    const servingList = callingList.filter(p => !recentlyCalled || p.token_number !== recentlyCalled.token);
+    const waitingGrid = waitingList.slice(0, 18); // Show top 18 waiting
 
     // Theme Configuration
     const theme = isPediatrics ? {
@@ -90,7 +122,8 @@ export default function Display() {
         border: 'border-yellow-200',
         tokenColor: 'text-blue-600',
         roomColor: 'text-pink-500',
-        font: 'font-comic rounded-2xl' // Assuming font-comic might be added or fallback to sans-rounded
+        waitingBg: 'bg-white/80',
+        font: 'font-comic rounded-2xl'
     } : {
         bg: 'bg-slate-50',
         headerBg: 'bg-white',
@@ -99,13 +132,14 @@ export default function Display() {
         border: 'border-slate-200',
         tokenColor: 'text-slate-800',
         roomColor: 'text-[#065590]',
+        waitingBg: 'bg-white',
         font: 'font-sans'
     };
 
     return (
         <div className={`fixed inset-0 w-screen h-screen flex flex-col overflow-hidden ${theme.bg} ${theme.font}`}>
             {/* Header */}
-            <header className={`${theme.headerBg} px-8 py-4 flex justify-between items-center shadow-lg z-10 border-b-4 ${isPediatrics ? 'border-[#64af45]' : 'border-[#065590]'}`}>
+            <header className={`${theme.headerBg} px-8 py-4 flex justify-between items-center shadow-md z-10 border-b-4 ${isPediatrics ? 'border-[#64af45]' : 'border-[#065590]'}`}>
                 <div className="flex items-center gap-6">
                     <img src="/logo.png" alt="Legacy Clinics" className="h-16 object-contain" />
                     <h1 className={`text-4xl font-black tracking-tight ${theme.headerText} uppercase`}>
@@ -117,62 +151,88 @@ export default function Display() {
                 </div>
             </header>
 
-            {/* Main Grid */}
-            <main className="flex-1 grid grid-cols-3 grid-rows-6 gap-[1px] bg-slate-200 border-t border-slate-300">
-                {mainList.map((patient) => (
-                    <div
-                        key={patient.id}
-                        className={`${theme.cardBg} flex items-center justify-between px-10 relative overflow-hidden animate-in fade-in zoom-in-95 duration-500`}
-                    >
-                        {/* Status Indicator Bar */}
-                        <div className={`absolute left-0 top-0 bottom-0 w-3 ${patient.token_number.startsWith('E') ? 'bg-[#64af45]' : patient.token_number.startsWith('V') ? 'bg-[#64af45]' : 'bg-[#065590]'}`} />
+            {/* Split Screen Main Content */}
+            <main className="flex-1 flex flex-col gap-4 p-4 overflow-hidden relative">
 
-                        <div className={`text-[5rem] font-black tracking-tighter ${theme.tokenColor}`}>
-                            {patient.token_number}
-                        </div>
+                {/* 1. NOW SERVING (Top Section) */}
+                <div className="flex-1 flex flex-col gap-3 p-4 bg-white/50 rounded-3xl border border-white/40 shadow-sm backdrop-blur-sm">
+                    <div className="flex items-center gap-4">
+                        <div className={`h-4 w-4 rounded-full ${isPediatrics ? 'bg-[#64af45]' : 'bg-[#065590]'} animate-pulse`} />
+                        <h2 className={`text-xl font-black uppercase tracking-widest ${theme.headerText} flex items-center gap-2`}>
+                            Now Serving
+                        </h2>
+                    </div>
 
-                        <div className="flex flex-col items-end">
-                            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Proceed To</span>
-                            <div className={`text-[3.5rem] font-bold leading-none ${theme.roomColor}`}>
-                                Room {patient.room_number}
+                    <div className="flex-1 grid grid-cols-6 gap-3 content-start overflow-hidden">
+                        {servingList.slice(0, 18).map((patient) => (
+                            <div key={patient.id} className={`${theme.cardBg} flex flex-col justify-between p-3 rounded-xl shadow border ${theme.border} relative overflow-hidden group`}>
+                                {/* Hourglass Animation */}
+                                <div className="absolute top-1 right-1 text-sm opacity-50 animate-bounce delay-700">⏳</div>
+
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Token</span>
+                                <div className={`text-2xl font-black tracking-tighter ${theme.tokenColor} z-10`}>
+                                    {patient.token_number}
+                                </div>
+                                <div className="mt-1">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block leading-none">Room</span>
+                                    <div className={`text-xl font-bold leading-none ${theme.roomColor}`}>
+                                        {patient.room_number || patient.target_room}
+                                    </div>
+                                </div>
+                                <div className={`absolute bottom-0 left-0 right-0 h-1 ${isPediatrics ? 'bg-[#64af45]' : 'bg-[#065590]'} opacity-20`} />
                             </div>
-                        </div>
-                    </div>
-                ))}
-
-                {/* Empty Cells Filler */}
-                {[...Array(18 - mainList.length)].map((_, i) => (
-                    <div key={`empty-${i}`} className={`${theme.cardBg} flex items-center justify-center opacity-50`}>
-                        <div className="w-full h-full bg-slate-50/50" />
-                    </div>
-                ))}
-            </main>
-
-            {/* Scrolling Ticker */}
-            {overflowList.length > 0 && (
-                <div className="bg-[#065590] text-white overflow-hidden py-3 border-t-4 border-[#065590] relative z-20">
-                    <div className="whitespace-nowrap inline-block animate-marquee pl-[100%]">
-                        {overflowList.map((p, i) => (
-                            <span key={i} className="mx-8 text-3xl font-bold font-mono inline-flex items-center gap-4">
-                                <span className="text-white">{p.token_number}</span>
-                                <span className="text-slate-500">➜</span>
-                                <span>Room {p.room_number}</span>
-                                {i < overflowList.length - 1 && <span className="text-slate-600 ml-8 text-xl">|</span>}
-                            </span>
+                        ))}
+                        {/* Empty Slots */}
+                        {[...Array(Math.max(0, 18 - servingList.length))].map((_, i) => (
+                            <div key={`empty-serve-${i}`} className="border border-dashed border-slate-200 rounded-xl flex items-center justify-center opacity-30">
+                                <span className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Open</span>
+                            </div>
                         ))}
                     </div>
                 </div>
-            )}
 
-            <style>{`
-                .animate-marquee {
-                    animation: marquee 20s linear infinite;
-                }
-                @keyframes marquee {
-                    0% { transform: translateX(0); }
-                    100% { transform: translateX(-100%); }
-                }
-            `}</style>
+                {/* 2. UP NEXT (Bottom Section) */}
+                <div className="flex-1 flex flex-col gap-3 p-4 bg-slate-100/50 rounded-3xl border border-slate-200/60">
+                    <div className="flex items-center gap-3">
+                        <h2 className={`text-xl font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2`}>
+                            <span>📋</span> Up Next
+                        </h2>
+                    </div>
+
+                    <div className="flex-1 grid grid-cols-6 gap-3 content-start overflow-hidden">
+                        {waitingGrid.map((patient) => (
+                            <div key={patient.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+                                <span className={`text-xl font-black ${theme.tokenColor} tracking-tight`}>{patient.token_number}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase truncate max-w-[80px]">{patient.target_room ? `Room ${patient.target_room}` : 'Waiting'}</span>
+                            </div>
+                        ))}
+                        {waitingGrid.length === 0 && (
+                            <div className="col-span-full h-full flex items-center justify-center text-slate-400 italic font-medium">
+                                No patients waiting in queue
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 3. JUST CALLED OVERLAY (Animated) */}
+                {recentlyCalled && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+                        <div className="bg-white p-12 rounded-[3rem] shadow-2xl flex flex-col items-center gap-8 border-8 border-[#64af45] animate-bounce-in">
+                            <h2 className="text-4xl font-bold text-[#64af45] uppercase tracking-widest animate-pulse">Calling Now</h2>
+
+                            <div className="text-[12rem] font-black leading-none text-slate-800 tracking-tighter">
+                                {recentlyCalled.token}
+                            </div>
+
+                            <div className="flex flex-col items-center gap-2">
+                                <span className="text-2xl font-bold text-slate-400 uppercase tracking-widest">Proceed to Room</span>
+                                <span className="text-8xl font-bold text-[#065590]">{recentlyCalled.room}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+            </main>
         </div>
     );
 }

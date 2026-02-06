@@ -71,6 +71,10 @@ class Queue(Base):
     patient = relationship("Patient", back_populates="queue_entries")
     doctor = relationship("User", foreign_keys=[doctor_id])
 
+    @property
+    def doctor_name(self):
+        return self.doctor.username if self.doctor else None
+
 
 class VisitHistory(Base):
     """Track all patient visits for historical reference"""

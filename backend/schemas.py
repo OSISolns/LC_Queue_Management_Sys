@@ -86,6 +86,7 @@ class QueueBase(BaseModel):
     target_dept: Optional[str] = None
     target_room: Optional[str] = None
     visit_type: Optional[str] = None
+    doctor_id: Optional[int] = None
 
 class QueueCreate(QueueBase):
     patient_id: Optional[int] = None  # Link to patient registry if available
@@ -104,6 +105,7 @@ class QueueResponse(QueueBase):
     called_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     doctor_id: Optional[int] = None
+    doctor_name: Optional[str] = None
     room_number: Optional[str] = None
 
     class Config:
@@ -178,6 +180,7 @@ class Token(BaseModel):
     role: str
     username: str
     room_number: Optional[str] = None
+    id: int
 
 class TokenData(BaseModel):
     username: Optional[str] = None

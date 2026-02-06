@@ -11,7 +11,7 @@ export default function Dashboard() {
     const [noShowList, setNoShowList] = useState([])
     const [activeListTab, setActiveListTab] = useState('waiting')
     const [currentPatient, setCurrentPatient] = useState(null)
-    const [doctorId, setDoctorId] = useState(1) // Simulate logged in doctor
+    const [doctorId, setDoctorId] = useState(user?.id || null)
     const [roomNumber, setRoomNumber] = useState("")
     const [timer, setTimer] = useState("00:00") // Consultation Timer usage
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -49,15 +49,21 @@ export default function Dashboard() {
     useEffect(() => {
         if (user) {
             setRoomNumber(user.room_number || "")
+            setDoctorId(user.id)
         }
     }, [user])
 
     const fetchQueue = async () => {
         try {
             const url = roomNumber ? `${API_URL}/queue?room=${roomNumber}` : `${API_URL}/queue`
-            const res = await fetch(url)
-            const data = await res.json()
-            setQueue(data)
+            const token = user?.token || localStorage.getItem('token')
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                if (Array.isArray(data)) setQueue(data)
+            }
         } catch (error) {
             console.error('Failed to fetch queue:', error)
         }
@@ -65,9 +71,12 @@ export default function Dashboard() {
 
     const fetchNoShows = async () => {
         try {
-            const res = await fetch(`${API_URL}/history?status=no-show&limit=50`)
+            const token = user?.token || localStorage.getItem('token')
+            const res = await fetch(`${API_URL}/history?status=no-show&limit=50`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
             const data = await res.json()
-            setNoShowList(data)
+            if (Array.isArray(data)) setNoShowList(data)
         } catch (error) {
             console.error('Failed to fetch no-shows:', error)
         }
@@ -76,10 +85,15 @@ export default function Dashboard() {
     const checkActive = async () => {
         if (!roomNumber) return
         try {
-            const res = await fetch(`${API_URL}/history?status=calling&limit=100`)
+            const token = user?.token || localStorage.getItem('token')
+            const res = await fetch(`${API_URL}/history?status=calling&limit=100`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
             const data = await res.json()
-            const active = data.find(p => p.room_number === roomNumber)
-            if (active) setCurrentPatient(active)
+            if (Array.isArray(data)) {
+                const active = data.find(p => p.room_number === roomNumber)
+                if (active) setCurrentPatient(active)
+            }
         } catch (error) {
             console.error('Failed to restore active patient:', error)
         }
@@ -92,9 +106,11 @@ export default function Dashboard() {
     useEffect(() => {
         const titleRole = user?.role === 'Technician' ? 'Technician' : 'Doctor'
         document.title = `${titleRole} Dashboard - Legacy Clinics`
-        fetchQueue()
-        checkActive()
-        if (activeListTab === 'noshow') fetchNoShows()
+        if (user || localStorage.getItem('token')) {
+            fetchQueue()
+            checkActive()
+            if (activeListTab === 'noshow') fetchNoShows()
+        }
 
         socket.on('queue_update', () => {
             fetchQueue()
@@ -104,13 +120,17 @@ export default function Dashboard() {
         return () => {
             socket.off('queue_update')
         }
-    }, [roomNumber])
+    }, [roomNumber, user])
 
     const callNext = async () => {
         try {
+            const token = user?.token || localStorage.getItem('token')
             const res = await fetch(`${API_URL}/queue/next`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ doctor_id: doctorId, room_number: roomNumber })
             })
 
@@ -132,9 +152,13 @@ export default function Dashboard() {
         if (!confirm("Call this specific patient?")) return;
 
         try {
+            const token = user?.token || localStorage.getItem('token')
             const res = await fetch(`${API_URL}/call-specific/${patientId}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ doctor_id: doctorId, room_number: roomNumber })
             })
 
@@ -153,8 +177,16 @@ export default function Dashboard() {
     const handleAction = async (action) => {
         if (!currentPatient) return
         try {
-            const endpoint = action === 'complete' ? 'complete' : action === 'noshow' ? 'no-show' : 'recall'
-            await fetch(`${API_URL}/queue/${currentPatient.id}/${endpoint}`, { method: 'POST' })
+            const token = user?.token || localStorage.getItem('token')
+            let url;
+            if (action === 'complete') url = `${API_URL}/complete/${currentPatient.id}`;
+            else if (action === 'noshow') url = `${API_URL}/no-show/${currentPatient.id}`;
+            else if (action === 'recall') url = `${API_URL}/recall/${currentPatient.id}`;
+
+            await fetch(url, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
 
             if (action === 'recall') {
                 alert(`Recalled ${currentPatient.token_number}`)
@@ -276,7 +308,7 @@ export default function Dashboard() {
                                     : 'bg-[#065590] text-white hover:bg-[#04437a] hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 active:scale-[0.98] cursor-pointer ring-4 ring-slate-100'}
                             `}
                         >
-                            {currentPatient ? 'Finish Current First' : '📣 Call Next Patient'}
+                            {currentPatient ? 'Finish Current First' : 'Call Next Patient'}
                         </button>
 
                     </div>
@@ -309,7 +341,7 @@ export default function Dashboard() {
                                             <p className="text-lg">Queue is empty</p>
                                         </div>
                                     ) : (
-                                        queue.map(p => (
+                                        queue.map((p, index) => (
                                             <div key={p.id} className={`
                                                 group flex justify-between items-center p-4 bg-white rounded-xl shadow-sm border border-slate-100 transition-all hover:shadow-md hover:border-[#065590]/30
                                                 border-l-[6px] ${p.token_number.startsWith('E') ? 'border-l-red-500' : p.token_number.startsWith('V') ? 'border-l-purple-500' : 'border-l-[#065590]'}
@@ -317,19 +349,19 @@ export default function Dashboard() {
                                                 <div className="flex items-center gap-4">
                                                     <span className="text-2xl font-bold text-slate-800 w-24">{p.token_number}</span>
                                                     <div className="flex flex-col">
-                                                        <span className="font-semibold text-slate-700">{p.patient_name || 'Walk-in'}</span>
+                                                        <span className="font-semibold text-slate-700 flex items-center gap-2">
+                                                            {p.patient_name || 'Walk-in'}
+                                                            {p.visit_type === 'Review' && (
+                                                                <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full uppercase font-bold tracking-wide border border-purple-200">
+                                                                    Review
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                         <span className="text-xs text-slate-400 font-mono">
                                                             {new Date(p.created_at + (p.created_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     </div>
                                                 </div>
-
-                                                {!currentPatient && (
-                                                    <button onClick={() => callSpecific(p.id)}
-                                                        className="opacity-0 group-hover:opacity-100 transition-opacity px-4 py-2 bg-[#065590]/10 text-[#065590] text-sm font-bold rounded-lg hover:bg-[#065590]/20">
-                                                        Call
-                                                    </button>
-                                                )}
                                             </div>
                                         ))
                                     )}

@@ -21,10 +21,15 @@ export default function Login() {
     const handleQuickLogin = async (u, p) => {
         try {
             const data = await login(u, p);
-            if (data.role === 'Admin') navigate('/admin');
-            else if (data.role === 'Doctor') navigate('/dashboard');
-            else if (data.role === 'Helpdesk') navigate('/kiosk');
-            else navigate('/');
+            if (data.role === 'Admin') {
+                navigate('/admin')
+            } else if (data.role === 'Helpdesk') {
+                navigate('/kiosk')
+            } else if (data.role === 'Doctor' || data.role === 'Technician') {
+                navigate('/dashboard')
+            } else {
+                navigate('/')
+            }
         } catch (err) {
             setError('Invalid username or password');
         }
@@ -78,24 +83,7 @@ export default function Login() {
                     </button>
                 </form>
 
-                {/* Quick Login - Dev Only */}
-                <div className="mt-8 pt-6 border-t border-slate-100">
-                    <p className="text-xs uppercase tracking-wider font-bold text-slate-400 text-center mb-4">Quick Access (Demo)</p>
-                    <div className="grid grid-cols-3 gap-3">
-                        <button onClick={() => handleQuickLogin('admin', 'admin123')}
-                            className="px-3 py-2 bg-amber-50 text-amber-700 text-sm font-semibold rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors">
-                            Admin
-                        </button>
-                        <button onClick={() => handleQuickLogin('Doc1', 'password')}
-                            className="px-3 py-2 bg-blue-50 text-blue-700 text-sm font-semibold rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors">
-                            Doctor
-                        </button>
-                        <button onClick={() => handleQuickLogin('desk1', 'password')}
-                            className="px-3 py-2 bg-[#065590]/10 text-[#065590] text-sm font-semibold rounded-lg border border-[#065590]/20 hover:bg-[#065590]/20 transition-colors">
-                            Desk
-                        </button>
-                    </div>
-                </div>
+
             </div>
         </div>
     );
