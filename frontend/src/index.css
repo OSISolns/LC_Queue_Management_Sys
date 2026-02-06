@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+    font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+body {
+    @apply bg-slate-50 text-[#065590];
+    margin: 0;
+    min-width: 320px;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#root,
+.app-container {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+/* Custom Scrollbar for sleek look */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+}
+
+/* Glass panel utility */
+.glass-panel {
+    @apply bg-white/90 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.4s ease-out;
+}
+
+.btn-clicky {
+    @apply transition-transform active:scale-95 duration-100;
+}
