@@ -61,7 +61,7 @@ export default function Login() {
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-[#065590] focus:border-transparent transition-all outline-none text-slate-800 placeholder-slate-400"
-                            placeholder="e.g. Doc1"
+                            placeholder="username"
                             required
                         />
                     </div>

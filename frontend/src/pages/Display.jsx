@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 
 const API_URL = "http://" + window.location.hostname + ":8000";
@@ -14,9 +14,24 @@ export default function Display() {
     const department = params.get('department');
     const isPediatrics = department === 'Pediatrics';
 
+    const timeoutRef = React.useRef(null);
+    const [voices, setVoices] = useState([]);
+
     const groundFloorDepartments = ['Neurology', 'Cardiology', 'Procedure', 'Radiology & Laboratory'];
     // Expanded list to cover generated test data (ENT, Gynecology) and others from DB
     const firstFloorDepartments = ['Radiology', 'Pathology', 'Dermatology', 'Orthopedics', 'Pediatrics', 'General', 'ENT', 'Gynecology', 'Urology', 'Internal Medicine', 'General Practitioner', 'General Surgeon', 'Family Medicine', 'Dentistry'];
+
+    useEffect(() => {
+        const updateVoices = () => {
+            setVoices(window.speechSynthesis.getVoices());
+        };
+        updateVoices();
+        window.speechSynthesis.onvoiceschanged = updateVoices;
+
+        return () => {
+            window.speechSynthesis.onvoiceschanged = null;
+        };
+    }, []);
 
     useEffect(() => {
         if (department) document.title = `Display - ${department}`;
@@ -41,10 +56,12 @@ export default function Display() {
 
         return () => {
             clearInterval(timeInterval);
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            window.speechSynthesis.cancel();
             socket.off('queue_update');
             socket.off('call_patient', handleCallPatient);
         };
-    }, [floor, department]);
+    }, [floor, department, voices]); // Add voices dependency to ensure speak function has latest voices if needed (though we access state)
 
     const shouldShowPatient = (data) => {
         // data contains: token, room, department, name
@@ -61,17 +78,33 @@ export default function Display() {
 
     const speak = (data) => {
         if (!data) return;
+
+        // Clear existing speech and timeout
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
         window.speechSynthesis.cancel();
+
         const text = `Token number ${data.token}, please proceed to Room ${data.room}`;
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
+        utterance.rate = 1.2;
+        utterance.pitch = 1.1;
         utterance.volume = 1;
-        const voices = window.speechSynthesis.getVoices();
+
+        // Use the loaded voices state
         const femaleVoice = voices.find(v => v.name.includes('Female') || v.name.includes('Google UK English Female'));
         if (femaleVoice) utterance.voice = femaleVoice;
+
         window.speechSynthesis.speak(utterance);
-        setTimeout(() => window.speechSynthesis.speak(utterance), 4000);
+
+        // Schedule repeat
+        timeoutRef.current = setTimeout(() => {
+            // Create a new utterance for the repeat to avoid "cannot speak same utterance twice" errors in some browsers
+            const repeatUtterance = new SpeechSynthesisUtterance(text);
+            repeatUtterance.rate = 1.2;
+            repeatUtterance.pitch = 1.1;
+            repeatUtterance.volume = 1;
+            if (femaleVoice) repeatUtterance.voice = femaleVoice;
+            window.speechSynthesis.speak(repeatUtterance);
+        }, 4000);
     };
 
     const fetchData = async () => {

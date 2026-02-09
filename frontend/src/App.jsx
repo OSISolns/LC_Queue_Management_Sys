@@ -53,6 +53,19 @@ function App() {
             </RequireAuth>
           } />
         </Routes>
+        <div style={{
+          position: 'fixed',
+          bottom: '10px',
+          right: '10px',
+          fontSize: '8px',
+          opacity: 0.5,
+          pointerEvents: 'none',
+          userSelect: 'none',
+          zIndex: 9999,
+          fontFamily: 'monospace'
+        }}>
+          VmFsZXJ5IFN0cnVjdHVyZQ==
+        </div>
       </div>
     </AuthProvider>
   )
