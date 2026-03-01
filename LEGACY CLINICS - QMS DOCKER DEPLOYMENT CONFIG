@@ -1,0 +1,273 @@
+LEGACY CLINICS - QMS DOCKER DEPLOYMENT CONFIG 
+Version: 1.2
+Owner: Valery
+Backend: /backend/main.py  (FastAPI + Socket.IO)
+Frontend: /frontend/dist   (built Vite output)
+DB: Postgres container (recommended)
+Reverse Proxy: Nginx container serves frontend + proxies /api + /socket.io
+
+============================================================
+1) REQUIRED FILES TO ADD (VERY IMPORTANT)
+============================================================
+A) Make backend a python package:
+- Ensure this exists:
+  backend/__init__.py
+
+If missing:
+  touch backend/__init__.py
+
+B) Add health endpoint (recommended) in backend/main.py:
+  @app.get("/health")
+  def health():
+      return {"status": "ok"}
+
+C) Make SECRET_KEY come from env (important):
+Change:
+  SECRET_KEY = "supersecretkey_change_me_in_production"
+To:
+  SECRET_KEY = os.getenv("SECRET_KEY", "dev_only_change_me")
+
+============================================================
+2) .dockerignore (place at PROJECT ROOT)
+============================================================
+.git
+__pycache__/
+*.pyc
+*.log
+.env
+venv/
+frontend/node_modules/
+frontend/venv/
+tests/
+
+============================================================
+3) DOCKERFILE (place at PROJECT ROOT: Dockerfile)
+============================================================
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN useradd -m -u 10001 appuser
+
+WORKDIR /app
+
+# Install deps first (cache-friendly)
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Copy backend package (includes templates + static)
+COPY backend /app/backend
+
+# Make package importable
+ENV PYTHONPATH=/app
+ENV HOST=0.0.0.0
+ENV PORT=8000
+ENV WORKERS=2
+
+EXPOSE 8000
+
+# Healthcheck (requires /health route)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+USER appuser
+
+# IMPORTANT:
+# Your app defines `socket_app = socketio.ASGIApp(sio, app)`
+# So we run socket_app so WebSockets work.
+CMD ["sh", "-c", "uvicorn backend.main:socket_app --host ${HOST} --port ${PORT} --workers ${WORKERS}"]
+
+============================================================
+4) DOCKER COMPOSE (place at: deploy/docker-compose.yml)
+============================================================
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: qms_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: qmsdb
+      POSTGRES_USER: qmsuser
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
+    volumes:
+      - qms_db_data:/var/lib/postgresql/data
+    networks:
+      - qms_net
+
+  api:
+    build:
+      context: ..
+      dockerfile: ../Dockerfile
+    container_name: qms_api
+    restart: unless-stopped
+    env_file:
+      - ./env/qms.env
+    depends_on:
+      - db
+    expose:
+      - "8000"
+    networks:
+      - qms_net
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: qms_nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      # For HTTPS you can do host-level certbot, or add 443 later.
+    volumes:
+      - ./nginx/qms.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../frontend/dist:/usr/share/nginx/html:ro
+    networks:
+      - qms_net
+
+networks:
+  qms_net:
+    driver: bridge
+
+volumes:
+  qms_db_data:
+
+============================================================
+5) NGINX CONFIG (place at: deploy/nginx/qms.conf)
+============================================================
+server {
+  listen 80;
+  server_name qms.legacyclinics.dev;
+
+  # Serve frontend (Vite dist)
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Frontend routes (SPA fallback)
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  # API proxy (you can also use /api prefix to keep clean)
+  location /api/ {
+    rewrite ^/api/(.*)$ /$1 break;
+    proxy_pass http://api:8000;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_read_timeout 120;
+    proxy_connect_timeout 10;
+  }
+
+  # Socket.IO (WebSockets)
+  location /socket.io/ {
+    proxy_pass http://api:8000/socket.io/;
+    proxy_http_version 1.1;
+
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_read_timeout 120;
+    proxy_connect_timeout 10;
+  }
+}
+
+============================================================
+6) ENV FILE (place at: deploy/env/qms.env.example)
+============================================================
+# Security
+APP_ENV=production
+SECRET_KEY=CHANGE_ME_LONG_RANDOM
+
+# Database (MATCH your database.py expectations)
+# If your code uses DATABASE_URL, set it:
+DATABASE_URL=postgresql+psycopg://qmsuser:CHANGE_ME_DB_PASSWORD@db:5432/qmsdb
+
+# Twilio
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_API_KEY_SID=
+TWILIO_API_KEY_SECRET=
+TWILIO_MESSAGING_SERVICE_SID=
+
+# CORS (tighten in prod)
+ALLOWED_ORIGINS=*
+
+============================================================
+7) DEPLOYMENT DAY STEPS (ON SERVER)
+============================================================
+A) Put project on server (no .git needed)
+- Copy folder to /opt/LC_Queuing-Sys (example)
+
+B) Create env file
+cd /opt/LC_Queuing-Sys/deploy
+cp ./env/qms.env.example ./env/qms.env
+nano ./env/qms.env
+# set SECRET_KEY
+# set DATABASE_URL password to match compose POSTGRES_PASSWORD
+
+C) Bring up stack
+sudo docker compose up -d --build
+
+D) Verify
+sudo docker ps
+sudo docker logs -n 150 qms_api
+sudo docker logs -n 150 qms_nginx
+
+curl -i http://127.0.0.1/
+curl -i http://127.0.0.1/api/health
+
+============================================================
+8) IMPORTANT: FRONTEND API BASE URL
+============================================================
+Because Nginx uses /api/ prefix, your frontend should call:
+  /api/login
+  /api/queue
+  /api/stats
+etc.
+
+If your frontend currently calls http://HOST:8000 directly,
+change it to relative "/api".
+
+============================================================
+9) COMMON ERRORS + FIXES
+============================================================
+- "attempted relative import with no known parent package"
+  Fix:
+    * ensure backend/__init__.py exists
+    * run uvicorn backend.main:socket_app (not main:app)
+    * ensure PYTHONPATH=/app
+
+- Socket.IO not connecting
+  Fix:
+    * run socket_app, not app
+    * nginx location /socket.io/ has Upgrade/Connection headers
+
+- Static/templates missing
+  Fix:
+    * ensure COPY backend /app/backend
+    * ensure paths in code are correct
+      (If needed, set StaticFiles(directory="/app/backend/static"))
+
+============================================================
+10) OPTIONAL HTTPS (BEST PRACTICE)
+============================================================
+Option A (recommended): Host-level Nginx + Certbot for TLS,
+proxying to container Nginx on 127.0.0.1:80.
+
+Option B: Add certbot container (more complex).
+
+============================================================
+END
+============================================================

@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard'
 import Display from './pages/Display'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
+import SMSOfficer from './pages/SMSOfficer'
+import { Lock, Monitor, Baby, Smartphone, Stethoscope, Wrench, Settings, MessageSquare, LogOut } from 'lucide-react'
 
 function RequireAuth({ children, role }) {
   const { user, loading } = useAuth();
@@ -52,6 +54,12 @@ function App() {
               <AdminDashboard />
             </RequireAuth>
           } />
+
+          <Route path="/sms" element={
+            <RequireAuth role="SMS Officer">
+              <SMSOfficer />
+            </RequireAuth>
+          } />
         </Routes>
         <div style={{
           position: 'fixed',
@@ -77,7 +85,7 @@ function Home() {
   const Card = ({ to, title, desc, icon, bg = "bg-white", onClick }) => {
     const content = (
       <div className={`p-8 rounded-2xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer h-full flex flex-col items-center text-center ${bg}`}>
-        <div className="text-4xl mb-4">{icon}</div>
+        <div className="mb-4 flex items-center justify-center p-3 rounded-full bg-white shadow-sm border border-slate-50">{icon}</div>
         <h2 className="text-xl font-bold text-slate-800 mb-2">{title}</h2>
         <p className="text-slate-500 text-sm font-medium">{desc}</p>
       </div>
@@ -104,34 +112,38 @@ function Home() {
 
           {!user ? (
             <>
-              <Card to="/login" title="Staff Login" desc="Sign in to access secure panels" icon="🔐" bg="bg-white" />
-              <Card to="/display?floor=ground" title="Ground Floor" desc="Neurology, Cardiology" icon="📺" bg="bg-emerald-50/50" />
-              <Card to="/display?floor=first" title="First Floor" desc="General & Specialized Depts" icon="📺" bg="bg-blue-50/50" />
-              <Card to="/display?department=Pediatrics" title="Pediatrics" desc="Children's Department display" icon="👶" bg="bg-amber-50/50" />
+              <Card to="/login" title="Staff Login" desc="Sign in to access secure panels" icon={<Lock size={36} className="text-slate-700" />} bg="bg-white" />
+              <Card to="/display?floor=ground" title="Ground Floor" desc="Neurology, Cardiology" icon={<Monitor size={36} className="text-emerald-700" />} bg="bg-emerald-50/50" />
+              <Card to="/display?floor=first" title="First Floor" desc="General & Specialized Depts" icon={<Monitor size={36} className="text-blue-700" />} bg="bg-blue-50/50" />
+              <Card to="/display?department=Pediatrics" title="Pediatrics" desc="Children's Department display" icon={<Baby size={36} className="text-amber-500" />} bg="bg-amber-50/50" />
             </>
           ) : (
             <>
               {(user.role === 'Helpdesk' || user.role === 'Admin') && (
-                <Card to="/kiosk" title="Kiosk Station" desc="Patient Self-Registration" icon="📱" />
+                <Card to="/kiosk" title="Kiosk Station" desc="Patient Self-Registration" icon={<Smartphone size={36} className="text-[#065590]" />} />
               )}
 
               {(user.role === 'Doctor' || user.role === 'Technician' || user.role === 'Admin') && (
                 <Card to="/dashboard"
                   title={user.role === 'Technician' ? 'Technician Dashboard' : 'Doctor Dashboard'}
                   desc="Manage your patient queue"
-                  icon={user.role === 'Technician' ? '🔧' : '👨‍⚕️'}
+                  icon={user.role === 'Technician' ? <Wrench size={36} className="text-slate-700" /> : <Stethoscope size={36} className="text-[#065590]" />}
                 />
               )}
 
               {user.role === 'Admin' && (
-                <Card to="/admin" title="System Admin" desc="Manage users, rooms & settings" icon="🛠️" bg="bg-amber-50" />
+                <Card to="/admin" title="System Admin" desc="Manage users, rooms & settings" icon={<Settings size={36} className="text-amber-700" />} bg="bg-amber-50" />
               )}
 
-              <Card to="/display?floor=ground" title="Ground Floor" desc="Public Display Screen" icon="📺" bg="bg-emerald-50" />
-              <Card to="/display?floor=first" title="First Floor" desc="Public Display Screen" icon="📺" bg="bg-blue-50" />
-              <Card to="/display?department=Pediatrics" title="Pediatrics" desc="Children's Display" icon="👶" bg="bg-amber-50" />
+              {(user.role === 'SMS Officer' || user.role === 'Admin') && (
+                <Card to="/sms" title="SMS Communications" desc="Send notifications to patients" icon={<MessageSquare size={36} className="text-blue-600" />} bg="bg-blue-50" />
+              )}
 
-              <Card onClick={logout} title="Logout" desc="Sign out of the system" icon="🚪" bg="bg-red-50 hover:bg-red-100" />
+              <Card to="/display?floor=ground" title="Ground Floor" desc="Public Display Screen" icon={<Monitor size={36} className="text-emerald-700" />} bg="bg-emerald-50" />
+              <Card to="/display?floor=first" title="First Floor" desc="Public Display Screen" icon={<Monitor size={36} className="text-blue-700" />} bg="bg-blue-50" />
+              <Card to="/display?department=Pediatrics" title="Pediatrics" desc="Children's Display" icon={<Baby size={36} className="text-amber-500" />} bg="bg-amber-50" />
+
+              <Card onClick={logout} title="Logout" desc="Sign out of the system" icon={<LogOut size={36} className="text-red-500" />} bg="bg-red-50 hover:bg-red-100" />
             </>
           )}
 

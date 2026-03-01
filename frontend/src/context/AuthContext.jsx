@@ -17,15 +17,18 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = async (username, password) => {
+        const HOST = window.location.hostname;
+        const API_URL = `https://${HOST}:8000`;
         try {
-            const response = await fetch('http://localhost:8000/login', {
+            const response = await fetch(`${API_URL}/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
             });
 
             if (!response.ok) {
-                throw new Error('Login failed');
+                if (response.status === 401) throw new Error('Invalid username or password');
+                throw new Error('Server error: ' + response.status);
             }
 
             const data = await response.json();
@@ -34,7 +37,10 @@ export const AuthProvider = ({ children }) => {
             setUser(data);
             return data;
         } catch (error) {
-            console.error(error);
+            console.error(`[AUTH] Login fetch error for ${API_URL}:`, error);
+            if (error.name === 'TypeError' && (error.message === 'Failed to fetch' || error.message.includes('NetworkError'))) {
+                throw new Error('SECURE_CONNECTION_ERROR');
+            }
             throw error;
         }
     };

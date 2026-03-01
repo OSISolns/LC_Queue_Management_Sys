@@ -1,0 +1,165 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content %}
+<div class="col-12 px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="fw-bold text-dark mb-1">Analytics Dashboard</h2>
+            <p class="text-muted mb-0">Overview of clinic performance and patient flow</p>
+        </div>
+        <form method="GET" action="/admin/analytics" class="d-flex align-items-center gap-2">
+            <div class="bg-white rounded-pill px-3 py-2 shadow-sm d-flex align-items-center">
+                <i class="fa-solid fa-calendar-day text-primary me-2"></i>
+                <span class="fw-semibold text-dark small me-3">{{ date_label }}</span>
+                <div class="vr me-3"></div>
+                <input type="date" name="start_date"
+                    class="form-control form-control-sm border-0 bg-transparent p-0 me-2" style="width: 100px;"
+                    value="{{ start_date }}" required>
+                <span class="text-muted small me-2">to</span>
+                <input type="date" name="end_date" class="form-control form-control-sm border-0 bg-transparent p-0 me-2"
+                    style="width: 100px;" value="{{ end_date }}" required>
+                <button type="submit" class="btn btn-sm btn-primary rounded-circle"
+                    style="width: 24px; height: 24px; padding: 0;"><i
+                        class="fa-solid fa-arrow-right fa-xs"></i></button>
+            </div>
+        </form>
+    </div>
+
+    <!-- KPI Row -->
+</div>
+</div>
+</div>
+<div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+            <h6 class="text-uppercase text-muted fw-bold small">Avg. Service Time</h6>
+            <h2 class="display-6 fw-bold mb-0 text-success">{{ avg_service_time }} <small
+                    class="fs-6 text-muted">min</small></h2>
+        </div>
+    </div>
+</div>
+<div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+            <h6 class="text-uppercase text-muted fw-bold small">Total Visits (Today)</h6>
+            <h2 class="display-6 fw-bold mb-0 text-info">{{ total_visits }}</h2>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="card-title fw-bold mb-0">Visits by Room</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="roomChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="card-title fw-bold mb-0">Hourly Traffic</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="trafficChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Staff Performance Table -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="card-title fw-bold mb-0">Staff Performance</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Staff Member</th>
+                                <th>Role</th> <!-- Placeholder if needed, or just Name -->
+                                <th class="text-center">Total Visits</th>
+                                <th class="text-center">Avg. Time (min)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for staff in staff_data %}
+                            <tr>
+                                <td class="fw-bold">{{ staff.name }}</td>
+                                <td><span class="badge bg-light text-dark border">Staff</span></td>
+                                <td class="text-center">{{ staff.visits }}</td>
+                                <td class="text-center">{{ staff.avg_time }} m</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">No data available for today</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Data passed from backend
+    const roomData = {{ room_data | tojson }};
+    const hourlyData = {{ hourly_data | tojson }};
+
+    // Room Chart
+    new Chart(document.getElementById('roomChart'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(roomData),
+            datasets: [{
+                data: Object.values(roomData),
+                backgroundColor: ['#4834d4', '#686de0', '#e056fd', '#badc58', '#f6e58d', '#ffbe76'],
+                borderWidth: 0
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    // Hourly Traffic Chart
+    new Chart(document.getElementById('trafficChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(hourlyData),
+            datasets: [{
+                label: 'Patients',
+                data: Object.values(hourlyData),
+                backgroundColor: '#2ecc71',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+</script>
+
+<style>
+    body {
+        background-color: #f8f9fa !important;
+    }
+
+    .card {
+        border-radius: 1rem !important;
+    }
+</style>
+{% endblock %}

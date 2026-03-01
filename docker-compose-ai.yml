@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  qms-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./queue.db:/app/queue.db
+    environment:
+      - DATABASE_URL=sqlite:////app/queue.db
+    depends_on:
+      - qms-ai-service
+
+  qms-ai-service:
+    build:
+      context: .
+      dockerfile: ai_service/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./queue.db:/app/queue.db
+      - ./ai_service/models_store:/app/ai_service/models_store
+    environment:
+      - DATABASE_URL=sqlite:////app/queue.db

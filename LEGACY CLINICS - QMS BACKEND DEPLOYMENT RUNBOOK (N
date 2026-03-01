@@ -1,0 +1,282 @@
+LEGACY CLINICS - QMS BACKEND DEPLOYMENT RUNBOOK (NO-DOCKER)
+Version: 1.0
+Owner: Valery
+Target OS: Ubuntu Server (22.04/24.04 recommended)
+Backend: FastAPI (Uvicorn) or similar Python API
+Reverse Proxy: Nginx
+TLS: Let's Encrypt (Certbot)
+Goal: Only owner has root. App runs as locked service user. No source repo on server.
+
+============================================================
+0) VARIABLES (EDIT THESE BEFORE DEPLOYMENT)
+============================================================
+SERVER_IP="x.x.x.x"
+DOMAIN="qms.legacyclinics.dev"
+APP_NAME="qmsapp"
+APP_USER="qmsapp"
+APP_DIR="/opt/qmsapp"
+APP_CODE_DIR="/opt/qmsapp/app/backend"       # where main.py lives
+VENV_DIR="/opt/qmsapp/venv"
+ENV_DIR="/etc/qmsapp"
+ENV_FILE="/etc/qmsapp/qmsapp.env"
+LOG_DIR="/var/log/qmsapp"
+UVI_HOST="127.0.0.1"
+UVI_PORT="8000"
+
+# Your local release package (created on your laptop)
+RELEASE_TGZ="qmsapp-release.tgz"
+
+============================================================
+1) SERVER BASELINE - UPDATE + REQUIRED PACKAGES
+============================================================
+sudo apt update && sudo apt -y upgrade
+
+# Essentials
+sudo apt -y install \
+  curl ca-certificates gnupg unzip zip tar \
+  python3 python3-venv python3-pip \
+  nginx ufw fail2ban
+
+# Optional but useful
+sudo apt -y install htop net-tools jq
+
+============================================================
+2) CREATE LOCKED SERVICE USER (NO LOGIN SHELL)
+============================================================
+sudo adduser --system --home /opt/qmsapp --group qmsapp
+sudo usermod -s /usr/sbin/nologin qmsapp
+
+# Create directories
+sudo mkdir -p "$APP_DIR/app" "$ENV_DIR" "$LOG_DIR"
+sudo chown -R root:root "$APP_DIR" "$ENV_DIR" "$LOG_DIR"
+sudo chmod 755 "$APP_DIR" "$ENV_DIR" "$LOG_DIR"
+
+============================================================
+3) SSH HARDENING (ONLY YOU SHOULD ADMIN)
+============================================================
+# IMPORTANT: Ensure you can login with SSH key BEFORE disabling passwords.
+
+sudo nano /etc/ssh/sshd_config
+
+# Recommended settings:
+# PasswordAuthentication no
+# PubkeyAuthentication yes
+# PermitRootLogin prohibit-password   (or 'no' if you use a non-root admin)
+# MaxAuthTries 3
+
+sudo systemctl restart ssh
+
+# Optional: restrict SSH to your IP (best via firewall/VPN)
+# If you have a fixed admin IP, set UFW rule in section 4.
+
+============================================================
+4) FIREWALL (UFW) - MINIMUM SAFE BASELINE
+============================================================
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Allow SSH (better: restrict to your admin IP)
+# sudo ufw allow from YOUR_PUBLIC_IP to any port 22 proto tcp
+sudo ufw allow 22/tcp
+
+# Allow web
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+sudo ufw enable
+sudo ufw status verbose
+
+============================================================
+5) DEPLOY CODE (NO GIT REPO ON SERVER)
+============================================================
+# Copy release tarball from your laptop to server:
+# scp qmsapp-release.tgz root@SERVER_IP:/root/
+
+sudo mkdir -p "$APP_DIR/app"
+sudo tar -xzf "/root/$RELEASE_TGZ" -C "$APP_DIR/app"
+
+# Ownership + permissions
+sudo chown -R root:qmsapp "$APP_DIR/app"
+sudo chmod -R 750 "$APP_DIR/app"
+
+# IMPORTANT: ensure main file exists:
+# Example path: /opt/qmsapp/app/backend/main.py
+sudo ls -la "$APP_CODE_DIR"
+
+============================================================
+6) PYTHON VENV + DEPENDENCIES (OWNED BY ROOT)
+============================================================
+sudo python3 -m venv "$VENV_DIR"
+sudo "$VENV_DIR/bin/pip" install --upgrade pip wheel
+
+# Install requirements
+sudo "$VENV_DIR/bin/pip" install -r "$APP_CODE_DIR/requirements.txt"
+
+# Lock venv
+sudo chown -R root:root "$VENV_DIR"
+sudo chmod -R 755 "$VENV_DIR"
+
+============================================================
+7) SECRETS CONFIG (ROOT-ONLY)
+============================================================
+sudo nano "$ENV_FILE"
+
+# Example contents (EDIT):
+# APP_ENV=production
+# DATABASE_URL=postgresql+psycopg://user:pass@127.0.0.1:5432/qmsdb
+# SECRET_KEY=change_me
+# SMS_API_KEY=change_me
+# SMS_SENDER_ID=LegacyClinics
+# ALLOWED_ORIGINS=https://qms.legacyclinics.dev
+
+sudo chown root:root "$ENV_FILE"
+sudo chmod 600 "$ENV_FILE"
+
+============================================================
+8) SYSTEMD SERVICE (RUN UVICORN SAFELY)
+============================================================
+sudo nano /etc/systemd/system/qmsapp.service
+
+# Paste (EDIT WorkingDirectory if needed):
+[Unit]
+Description=Legacy Clinics QMS Backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=qmsapp
+Group=qmsapp
+WorkingDirectory=/opt/qmsapp/app/backend
+EnvironmentFile=/etc/qmsapp/qmsapp.env
+ExecStart=/opt/qmsapp/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+# Logging
+StandardOutput=append:/var/log/qmsapp/app.log
+StandardError=append:/var/log/qmsapp/error.log
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/qmsapp /tmp
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable service
+sudo systemctl daemon-reload
+sudo systemctl enable --now qmsapp
+sudo systemctl status qmsapp --no-pager
+sudo journalctl -u qmsapp -n 50 --no-pager
+
+# Local test:
+curl -s http://127.0.0.1:8000/
+
+============================================================
+9) NGINX REVERSE PROXY (PUBLIC HTTPS -> PRIVATE UVICORN)
+============================================================
+sudo nano /etc/nginx/sites-available/qmsapp
+
+# Paste (EDIT domain):
+server {
+    listen 80;
+    server_name qms.legacyclinics.dev;
+
+    # Optional: basic limits
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 60;
+        proxy_connect_timeout 10;
+    }
+}
+
+sudo ln -s /etc/nginx/sites-available/qmsapp /etc/nginx/sites-enabled/qmsapp
+sudo nginx -t
+sudo systemctl reload nginx
+
+# Public test:
+# curl -I http://qms.legacyclinics.dev
+
+============================================================
+10) HTTPS (LET'S ENCRYPT)
+============================================================
+sudo apt -y install certbot python3-certbot-nginx
+sudo certbot --nginx -d qms.legacyclinics.dev
+
+# Verify auto-renew:
+sudo systemctl status certbot.timer --no-pager
+
+============================================================
+11) FAIL2BAN (BASIC SSH PROTECTION)
+============================================================
+sudo nano /etc/fail2ban/jail.local
+
+# Paste:
+[sshd]
+enabled = true
+port = ssh
+maxretry = 3
+findtime = 10m
+bantime = 1h
+
+sudo systemctl restart fail2ban
+sudo fail2ban-client status sshd
+
+============================================================
+12) BACKUP + ROLLBACK STRATEGY (DEPLOYMENT DAY SAVER)
+============================================================
+# Before each deployment:
+# 1) Copy current app directory:
+sudo tar -czf /root/qmsapp-backup-$(date +%F_%H%M).tgz -C /opt/qmsapp/app backend
+
+# 2) If deploy fails, restore:
+# sudo rm -rf /opt/qmsapp/app/backend
+# sudo tar -xzf /root/qmsapp-backup-YYYY-MM-DD_HHMM.tgz -C /opt/qmsapp/app
+
+============================================================
+13) LOGS AND HEALTH CHECKS
+============================================================
+# Service status:
+sudo systemctl status qmsapp --no-pager
+
+# Uvicorn logs:
+sudo tail -n 200 /var/log/qmsapp/app.log
+sudo tail -n 200 /var/log/qmsapp/error.log
+
+# Nginx logs:
+sudo tail -n 200 /var/log/nginx/access.log
+sudo tail -n 200 /var/log/nginx/error.log
+
+# Endpoint test:
+curl -s https://qms.legacyclinics.dev/
+
+============================================================
+14) SECURITY FINAL CHECKLIST
+============================================================
+[ ] Only you have SSH key access
+[ ] PasswordAuthentication disabled
+[ ] Uvicorn bound to 127.0.0.1 only
+[ ] Nginx is the only public entrypoint (443)
+[ ] /etc/qmsapp/qmsapp.env is 600 root:root
+[ ] No .git directory on server
+[ ] UFW enabled with minimal open ports (22,80,443)
+[ ] Backups exist before go-live
+[ ] TLS enabled + renew timer active
+
+============================================================
+END
+============================================================

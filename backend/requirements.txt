@@ -9,3 +9,9 @@ passlib==1.7.4
 python-jose[cryptography]
 sqladmin
 itsdangerous
+edge_tts
+python-dotenv
+python-docx
+openpyxl
+httpx
+cachetools

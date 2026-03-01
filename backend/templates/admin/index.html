@@ -1,0 +1,274 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4" style="max-width: 100% !important;">
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="fw-bold text-dark mb-1">System Overview</h2>
+            <p class="text-muted mb-0">Real-time operational dashboard</p>
+        </div>
+        <div class="d-flex align-items-center bg-white rounded-pill px-3 py-2 shadow-sm">
+            <span class="badge bg-success rounded-circle p-2 me-2 pulse"></span>
+            <span class="fw-semibold text-dark small">System Online</span>
+        </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="row g-4 mb-5">
+        <!-- Waiting -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden position-relative"
+                style="background: linear-gradient(135deg, #FF6B6B 0%, #EE5253 100%); color: white;">
+                <div class="card-body p-4 position-relative z-1">
+                    <h6 class="text-uppercase text-white-50 fw-bold small mb-2 spacing-1">Currently Waiting</h6>
+                    <h2 class="display-5 fw-bold mb-0">{{ waiting_count }}</h2>
+                    <div class="mt-3 small text-white-50">Patients in queue</div>
+                </div>
+                <i class="fa-solid fa-users position-absolute text-white opacity-25"
+                    style="bottom: -15px; right: -15px; font-size: 6rem;"></i>
+            </div>
+        </div>
+
+        <!-- Serving -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden position-relative"
+                style="background: linear-gradient(135deg, #4834d4 0%, #686de0 100%); color: white;">
+                <div class="card-body p-4 position-relative z-1">
+                    <h6 class="text-uppercase text-white-50 fw-bold small mb-2 spacing-1">Active Visits</h6>
+                    <h2 class="display-5 fw-bold mb-0">{{ active_visits }}</h2>
+                    <div class="mt-3 small text-white-50">Doctors busy</div>
+                </div>
+                <i class="fa-solid fa-user-doctor position-absolute text-white opacity-25"
+                    style="bottom: -15px; right: -15px; font-size: 6rem;"></i>
+            </div>
+        </div>
+
+        <!-- Total Today -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden position-relative"
+                style="background: linear-gradient(135deg, #2ecc71 0%, #26de81 100%); color: white;">
+                <div class="card-body p-4 position-relative z-1">
+                    <h6 class="text-uppercase text-white-50 fw-bold small mb-2 spacing-1">Total Today</h6>
+                    <h2 class="display-5 fw-bold mb-0">{{ total_today }}</h2>
+                    <div class="mt-3 small text-white-50">Completed visits</div>
+                </div>
+                <i class="fa-solid fa-clipboard-check position-absolute text-white opacity-25"
+                    style="bottom: -15px; right: -15px; font-size: 6rem;"></i>
+            </div>
+        </div>
+
+        <!-- Online Staff -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden position-relative"
+                style="background: linear-gradient(135deg, #f0932b 0%, #ffbe76 100%); color: white;">
+                <div class="card-body p-4 position-relative z-1">
+                    <h6 class="text-uppercase text-white-50 fw-bold small mb-2 spacing-1">Online Staff</h6>
+                    <h2 class="display-5 fw-bold mb-0">{{ active_staff }}</h2>
+                    <div class="mt-3 small text-white-50">Users logged in</div>
+                </div>
+                <i class="fa-solid fa-user-nurse position-absolute text-white opacity-25"
+                    style="bottom: -15px; right: -15px; font-size: 6rem;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5">
+        <!-- Live Queue Overview -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div
+                    class="card-header bg-white border-0 pt-4 px-4 pb-3 d-flex justify-content-between align-items-center">
+                    <h5 class="card-title fw-bold text-dark mb-0">Live Queue Overview</h5>
+                    <a href="/admin/queue/list" class="btn btn-sm btn-light rounded-pill px-3">View Full List</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4 text-uppercase text-muted border-0 small fw-bold">Token</th>
+                                    <th class="text-uppercase text-muted border-0 small fw-bold">Patient Name</th>
+                                    <th class="text-uppercase text-muted border-0 small fw-bold">Status</th>
+                                    <th class="text-end pe-4 text-uppercase text-muted border-0 small fw-bold">Time In
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in live_queue %}
+                                <tr class="hover-bg-light transition-base">
+                                    <td class="ps-4 fw-bold text-primary">#{{ item.token_number }}</td>
+                                    <td class="fw-bold text-dark">{{ item.patient_name }}</td>
+                                    <td>
+                                        {% if item.status == 'serving' %}
+                                        <span
+                                            class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-10 rounded-pill px-3">Serving</span>
+                                        {% elif item.status == 'waiting' %}
+                                        <span
+                                            class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-10 rounded-pill px-3">Waiting</span>
+                                        {% else %}
+                                        <span
+                                            class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-10 rounded-pill px-3">{{
+                                            item.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end pe-4 text-muted small">{{ item.created_at.strftime('%H:%M') }}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-5">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <i class="fa-solid fa-mug-hot fa-2x mb-3 opacity-25"></i>
+                                            <p class="mb-0">Queue is currently empty.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Doctor Status Panel -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 pt-4 px-4 pb-3">
+                    <h5 class="card-title fw-bold text-dark mb-0">Doctor Status</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush border-0">
+                        {% for doc in doctor_status %}
+                        <div
+                            class="list-group-item border-0 px-4 py-3 hover-bg-light transition-base d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <div class="position-relative">
+                                    <div class="avatar-circle bg-light text-primary rounded-circle d-flex align-items-center justify-content-center me-3 fw-bold border"
+                                        style="width: 42px; height: 42px;">
+                                        {{ doc.name[:2].upper() }}
+                                    </div>
+                                    <span
+                                        class="position-absolute top-0 start-100 translate-middle p-1 border border-white rounded-circle {{ 'bg-success' if doc.status == 'Available' else 'bg-danger' }}"></span>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-dark small">{{ doc.name }}</h6>
+                                    <small class="text-muted" style="font-size: 0.75rem;">{{ doc.role }}</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                {% if doc.status == 'Busy' %}
+                                <span
+                                    class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-10 rounded-pill">{{
+                                    doc.status }}</span>
+                                {% else %}
+                                <span
+                                    class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-10 rounded-pill">{{
+                                    doc.status }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-5">
+                            <p class="mb-0">No medical staff online.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-0 pt-4 px-4 pb-0">
+                    <h5 class="card-title fw-bold text-dark mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="d-flex gap-3 flex-wrap">
+                        <a href="/admin/user/create" class="btn btn-outline-primary btn-lg px-4 border-2 fw-semibold">
+                            <i class="fa-solid fa-user-plus me-2"></i> Add User
+                        </a>
+                        <a href="/admin/queue/list" class="btn btn-outline-dark btn-lg px-4 border-2 fw-semibold">
+                            <i class="fa-solid fa-list-ol me-2"></i> Monitor Queue
+                        </a>
+                        <a href="/admin/analytics" class="btn btn-outline-info btn-lg px-4 border-2 fw-semibold">
+                            <i class="fa-solid fa-chart-line me-2"></i> Analytics
+                        </a>
+                        <a href="/admin/visit-history/list"
+                            class="btn btn-outline-secondary btn-lg px-4 border-2 fw-semibold">
+                            <i class="fa-solid fa-file-invoice me-2"></i> Reports
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* Override sqladmin container constraints for full-width dashboard */
+    .container-fluid {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    /* Expand parent containers */
+    .row {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    body {
+        font-family: 'Inter', sans-serif !important;
+        background-color: #f3f4f6 !important;
+    }
+
+    .card {
+        border-radius: 12px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
+    }
+
+    .spacing-1 {
+        letter-spacing: 1px;
+    }
+
+    .opacity-25 {
+        opacity: 0.25 !important;
+    }
+
+    .transition-base {
+        transition: background-color 0.2s ease;
+    }
+
+    .hover-bg-light:hover {
+        background-color: #f8f9fa;
+    }
+
+    .pulse {
+        box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+        animation: pulse-green 2s infinite;
+    }
+
+    @keyframes pulse-green {
+        0% {
+            transform: scale(0.95);
+            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+        }
+
+        70% {
+            transform: scale(1);
+            box-shadow: 0 0 0 6px rgba(46, 204, 113, 0);
+        }
+
+        100% {
+            transform: scale(0.95);
+            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+        }
+    }
+</style>
+{% endblock %}

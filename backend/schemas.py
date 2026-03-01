@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, date
 from typing import Optional, List
+from enum import Enum
 
 # Patient Schemas
 class PatientBase(BaseModel):
@@ -43,7 +44,7 @@ class PatientResponse(PatientBase):
     is_active: bool
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Visit History Schemas
 class VisitHistoryBase(BaseModel):
@@ -77,7 +78,7 @@ class VisitHistoryResponse(VisitHistoryBase):
     updated_at: datetime
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Queue Schemas
 class QueueBase(BaseModel):
@@ -87,9 +88,12 @@ class QueueBase(BaseModel):
     target_room: Optional[str] = None
     visit_type: Optional[str] = None
     doctor_id: Optional[int] = None
+    department_id: Optional[int] = None
 
 class QueueCreate(QueueBase):
     patient_id: Optional[int] = None  # Link to patient registry if available
+    phone_number: Optional[str] = None  # Phone number from kiosk registration
+    gender: Optional[str] = None # Gender for new patients
 
 class QueueUpdate(BaseModel):
     status: str
@@ -106,10 +110,17 @@ class QueueResponse(QueueBase):
     completed_at: Optional[datetime] = None
     doctor_id: Optional[int] = None
     doctor_name: Optional[str] = None
+    created_by_id: Optional[int] = None
+    registrar_name: Optional[str] = None
+    department_id: Optional[int] = None
     room_number: Optional[str] = None
+    patient_phone: Optional[str] = None
+    patient_gender: Optional[str] = None
+    patient_dob: Optional[str] = None
+    priority_name: Optional[str] = None
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class CallNextRequest(BaseModel):
     doctor_id: int
@@ -126,37 +137,54 @@ class DepartmentCreate(DepartmentBase):
 class Department(DepartmentBase):
     id: int
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Room Schemas
 class RoomBase(BaseModel):
     name: str
+    floor: Optional[str] = None
 
 class RoomCreate(RoomBase):
-    department_id: int
+    department_id: Optional[int] = None
+
+class RoomUpdate(BaseModel):
+    name: Optional[str] = None
+    department_id: Optional[int] = None
+    floor: Optional[str] = None
 
 class Room(RoomBase):
     id: int
-    department_id: int
+    department_id: Optional[int] = None
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Role Schemas
 class RoleBase(BaseModel):
     name: str
+    category: Optional[str] = None
 
 class Role(RoleBase):
     id: int
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # User Schemas
+class Salutation(str, Enum):
+    DR = "Dr."
+    MR = "Mr."
+    MRS = "Mrs."
+    MS = "Ms."
+
 class UserBase(BaseModel):
     username: str
     role_id: int
     department_id: Optional[int] = None
     room_number: Optional[str] = None
     is_active: Optional[bool] = True
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    salutation: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -167,26 +195,103 @@ class UserUpdate(BaseModel):
     room_number: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    salutation: Optional[str] = None
 
 class User(UserBase):
     id: int
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Auth Schemas
 class Token(BaseModel):
     access_token: str
     token_type: str
-    role: str
+    role: str # This will be the category for permissions
+    role_title: str # This will be the specific title for display
     username: str
     room_number: Optional[str] = None
     id: int
+    first_login_today: bool = False
+    salutation: Optional[str] = None
+    full_name: Optional[str] = None
 
 class TokenData(BaseModel):
     username: Optional[str] = None
-    role: Optional[str] = None
+    role: Optional[str] = None # Category
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+# SMS Schemas
+class MessageType(str, Enum):
+    TEST_RESULTS = "test_results"
+    APPOINTMENT = "appointment"
+    PAYMENT = "payment"
+    GENERAL = "general"
+
+class SMSSendRequest(BaseModel):
+    patient_id: Optional[int] = None
+    phone_number: str
+    message_body: str
+    message_type: Optional[MessageType] = MessageType.GENERAL
+
+class SMSHistoryResponse(BaseModel):
+    id: int
+    patient_id: Optional[int]
+    phone_number: str
+    message_body: str
+    message_type: Optional[str]
+    sent_by_user_id: int
+    sent_at: datetime
+    status: str
+    
+    class Config:
+        orm_mode = True
+
+class PatientForSMS(BaseModel):
+    id: int
+    mrn: str
+    first_name: str
+    last_name: str
+    phone_number: Optional[str]
+    last_visit_date: Optional[datetime]
+    
+    class Config:
+        orm_mode = True
+
+class MessageTemplate(BaseModel):
+    type: MessageType
+    template: str
+    description: str
+
+
+class SettingBase(BaseModel):
+    key: str
+    value: Optional[str] = None
+    description: Optional[str] = None
+
+class SettingCreate(SettingBase):
+    pass
+
+class SettingResponse(SettingBase):
+    id: int
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+
+
+class UserDeleteRequest(BaseModel):
+    admin_password: str
+    reason: str
+
+class HistoryDeleteRequest(BaseModel):
+    admin_password: str
+    reason: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
 

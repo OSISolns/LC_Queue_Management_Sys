@@ -14,19 +14,44 @@ A real-time queuing system with Priority logic (Emergency, VIP, Standard).
 
 ## Setup & Running
 
-### 1. Backend Setup
+### Quick Start (Recommended) 🚀
 
-Open a terminal in the root directory:
+**One command to start everything:**
 
 ```bash
-# Create virtual environment (if not already done)
-python -m venv venv
+./dev.sh
+```
 
-# Activate virtual environment
-# Windows (PowerShell):
-.\venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
+This script will automatically:
+- ✅ Create virtual environment if needed
+- ✅ Install all dependencies
+- ✅ Start both backend and frontend servers
+
+That's it! The system will be running at:
+- **Frontend**: http://localhost:5173
+- **Backend**: http://localhost:8000
+
+---
+
+### Alternative: Manual Setup
+
+#### 1. Backend Only
+
+**Simple method:**
+```bash
+# Make sure you have a virtual environment and dependencies installed
+source venv/bin/activate  # Linux/Mac
+pip install -r backend/requirements.txt
+
+# Run backend
+python backend/run.py
+```
+
+**Traditional method:**
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac (Windows: .\venv\Scripts\activate)
 
 # Install dependencies
 pip install -r backend/requirements.txt
@@ -34,16 +59,8 @@ pip install -r backend/requirements.txt
 # Run the server
 uvicorn backend.main:socket_app --reload --port 8000
 ```
-*Note: We run `socket_app` to include Socket.IO, but standard `app` works for HTTP only.* (Actually, `uvicorn backend.main:socket_app` is correct for the wrapped ASGI app).
 
-**Quick Start (Alternative):**
-- **Windows**: Run `start_dev.ps1` (PowerShell script)
-- **Linux/Mac**: Run `./start_dev.sh` (Bash script)
-
-
-### 2. Frontend Setup
-
-Open a new terminal in the `frontend` directory:
+#### 2. Frontend Only
 
 ```bash
 cd frontend

@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+scikit-learn
+pandas
+joblib
+prometheus-client
+python-jose[cryptography]
+sqlalchemy
+pydantic
+python-dotenv

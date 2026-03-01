@@ -27,11 +27,17 @@ export default function Login() {
                 navigate('/kiosk')
             } else if (data.role === 'Doctor' || data.role === 'Technician') {
                 navigate('/dashboard')
+            } else if (data.role === 'SMS Officer') {
+                navigate('/sms')
             } else {
                 navigate('/')
             }
         } catch (err) {
-            setError('Invalid username or password');
+            if (err.message === 'SECURE_CONNECTION_ERROR') {
+                setError('CONNECTION_ERROR');
+            } else {
+                setError(err.message || 'Invalid username or password');
+            }
         }
     }
 
@@ -47,7 +53,25 @@ export default function Login() {
                 </div>
 
                 {/* Error Message */}
-                {error && (
+                {error === 'CONNECTION_ERROR' ? (
+                    <div className="bg-amber-50 text-amber-800 p-4 rounded-xl mb-6 text-xs border border-amber-100 flex flex-col gap-2">
+                        <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-[10px]">
+                            ⚠️ Secure Connection Error
+                        </div>
+                        <p>Your browser is blocking the secure API connection (Self-Signed Certificate).</p>
+                        <p className="bg-slate-100 p-2 rounded font-mono text-[10px] break-all border border-slate-200">
+                            Failed to reach: https://{window.location.hostname}:8000
+                        </p>
+                        <a
+                            href={`https://${window.location.hostname}:8000/docs`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-[#065590] text-white text-center font-bold py-2 rounded-lg hover:bg-[#04437a] mt-2 transition-all shadow-md shadow-[#065590]/20"
+                        >
+                            Authorize this connection
+                        </a>
+                    </div>
+                ) : error && (
                     <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-6 text-sm font-medium text-center border border-red-100">
                         {error}
                     </div>
