@@ -1,5 +1,6 @@
 import math
 import io
+import re as _re
 from typing import List, Dict, Optional
 from datetime import date, time
 from sqlalchemy.orm import Session
@@ -37,186 +38,246 @@ def _parse_time(value: str) -> Optional[time]:
 def parse_roster_file(file_bytes: bytes, ext: str, db: Session, roster_day_id: int, user_id: int):
     """
     Parse a .docx or .xlsx file and create roster assignments.
-
-    Expected columns (case-insensitive):
-      Department | Staff Name | Role | Shift | Start Time | End Time
-
-    Returns (count_created, list_of_error_strings).
+    Now more robust to handle multiple header rows and automatic staff creation.
     """
     # Load lookup maps
     dept_map = {d.name.lower(): d for d in db.query(Department).all()}
+    from backend.models import Role
+    doctor_role = db.query(Role).filter(Role.name == "Doctor").first()
+    default_role_id = doctor_role.id if doctor_role else 2
 
-    # Index staff by BOTH full_name and username so either can be matched
+    # Index staff by BOTH full_name and username
     staff_map = {}
-    for u in db.query(ClinicUser).filter(ClinicUser.is_active == True).all():
-        if u.full_name:
-            staff_map[u.full_name.lower()] = u
-        if u.username:
-            staff_map[u.username.lower()] = u
+    def refresh_staff_map():
+        nonlocal staff_map
+        staff_map = {}
+        for u in db.query(ClinicUser).filter(ClinicUser.is_active == True).all():
+            if u.full_name:
+                staff_map[u.full_name.lower()] = u
+            if u.username:
+                staff_map[u.username.lower()] = u
+
+    refresh_staff_map()
 
     def find_dept(name: str):
-        key = name.strip().lower()
-        # Handle "0", "Department 0" or empty as Physiotherapy
+        if not name: return dept_map.get("physiotherapy")
+        key = str(name).strip().lower()
         if not key or key in ("0", "department 0"):
             return dept_map.get("physiotherapy")
-
         if key in dept_map:
             return dept_map[key]
-        # Partial match
         for k, d in dept_map.items():
             if key in k or k in key:
                 return d
-        
-        # Fallback to Physiotherapy for unmatched departments
         return dept_map.get("physiotherapy")
 
-    def find_staff(name: str):
-        key = name.strip().lower()
-        # Exact match
-        if key in staff_map:
-            return staff_map[key]
-        # Partial match — handle "Firstname Lastname" vs "Lastname, Firstname" etc.
-        for k, u in staff_map.items():
-            if not k:
-                continue
-            if key in k or k in key:
-                return u
-        return None
+    def get_or_create_staff(name: str, dept_id: Optional[int] = None):
+        if not name or len(name.strip()) < 3: return None
+        # Clean name: remove "Dr", "Dr.", "Mr", etc. prefixes for matching
+        import re as _re
+        clean_name = _re.sub(r'^(Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+', '', name.strip(), flags=_re.IGNORECASE).strip()
+        
+        staff = staff_map.get(clean_name.lower())
+        if not staff:
+            # Try original name if clean didn't work
+            staff = staff_map.get(name.strip().lower())
+            
+        if not staff:
+            # Partial match search
+            for k, u in staff_map.items():
+                if clean_name.lower() in k or k in clean_name.lower():
+                    return u
 
-    rows = []  # list of dicts
+            # Create new staff if not found
+            username = clean_name.lower().replace(" ", "_")
+            # Ensure unique username
+            base_username = username
+            counter = 1
+            while db.query(ClinicUser).filter(ClinicUser.username == username).first():
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            # Use hashed password "welcome123" as default
+            from backend.main import get_password_hash
+            new_user = ClinicUser(
+                username=username,
+                full_name=clean_name,
+                hashed_password=get_password_hash("welcome123"),
+                role_id=default_role_id,
+                department_id=dept_id,
+                is_active=True
+            )
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+            refresh_staff_map() # Update local cache
+            return new_user
+        return staff
 
+    rows_raw = []
     if ext == '.docx':
         from docx import Document
         doc = Document(io.BytesIO(file_bytes))
         if not doc.tables:
             raise ValueError("The uploaded .docx file contains no tables.")
         table = doc.tables[0]
-        headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
-        for row in table.rows[1:]:
-            cells = [c.text.strip() for c in row.cells]
-            rows.append(dict(zip(headers, cells)))
-
+        for row in table.rows:
+            rows_raw.append([cell.text.strip() for cell in row.cells])
     elif ext in ('.xlsx', '.xls'):
         import openpyxl
+        from datetime import time as dt_time
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         ws = wb.active
-        all_rows = list(ws.iter_rows(values_only=True))
-        if not all_rows:
-            raise ValueError("The uploaded spreadsheet is empty.")
-        headers = [str(h).strip().lower() if h is not None else "" for h in all_rows[0]]
-        for data_row in all_rows[1:]:
-            if all(v is None for v in data_row):
-                continue  # skip blank rows
-            rows.append(dict(zip(headers, [str(v).strip() if v is not None else "" for v in data_row])))
-    else:
-        raise ValueError(f"Unsupported file type: {ext}")
+        for row in ws.iter_rows(values_only=True):
+             # Keep time objects as they are, but strip strings
+             processed_row = []
+             for v in row:
+                 if isinstance(v, dt_time):
+                     processed_row.append(v)
+                 else:
+                     processed_row.append(str(v).strip() if v is not None else "")
+             rows_raw.append(processed_row)
+    
+    if len(rows_raw) < 2:
+        raise ValueError("File contains insufficient data.")
 
-    # Column aliases — order matters (first match wins)
-    STAFF_ALIASES  = ['staff name', 'staff', 'name', 'fullname', 'full name', 'employee', 'employee name', 'doctor', 'doctors', 'nurse']
+    # Find the header row (contains "Staff" or "Doctor" or "Department")
+    header_idx = -1
+    STAFF_KEYWORDS = ['staff', 'doctor', 'nurse', 'name', 'employee']
+    for i, row in enumerate(rows_raw[:6]):
+        if any(k in str(cell).lower() for cell in row for k in STAFF_KEYWORDS):
+            header_idx = i
+            break
+    
+    if header_idx == -1:
+        header_idx = 0 # Fallback
+        
+    headers = [str(h).lower() for h in rows_raw[header_idx]]
+    
+    # Identify indices
+    cols = {}
+    STAFF_ALIASES  = ['staff name', 'staff', 'name', 'fullname', 'full name', 'employee', 'doctor', 'doctors', 'nurse']
     DEPT_ALIASES   = ['department', 'dept', 'department name', 'unit']
     ROLE_ALIASES   = ['role', 'position', 'designation', 'title']
-    SHIFT_ALIASES  = ['shift', 'shift name', 'shift type', 'shift label', 'duty']
-    START_ALIASES  = ['start time', 'start', 'from', 'time in', 'time from', 'shift start']
-    END_ALIASES    = ['end time', 'end', 'to', 'time out', 'time to', 'shift end']
+    SHIFT_ALIASES  = ['shift', 'shift name', 'shift type', 'duty']
+    
+    # We might have multiple staff columns (e.g. "Morning", "Evening")
+    # or a single "Staff" column + "Shift" column.
+    staff_cols = []
+    dept_idx = -1
+    start_time_idx = -1
+    end_time_idx = -1
+    
+    START_TIME_ALIASES = ['start time', 'start', 'from']
+    END_TIME_ALIASES = ['end time', 'end', 'to']
 
-    def get(row, *aliases):
-        for a in aliases:
-            if a in row and row[a]:
-                return row[a]
-        return ""
+    for i, h in enumerate(headers):
+        if any(a in h for a in DEPT_ALIASES): dept_idx = i
+        if any(a in h for a in STAFF_ALIASES): staff_cols.append(i)
+        if any(a in h for a in START_TIME_ALIASES): start_time_idx = i
+        if any(a in h for a in END_TIME_ALIASES): end_time_idx = i
 
-    if not rows:
-        raise ValueError("The file contains no data rows after the header.")
+    # If row below headers contains shift hints (Morning/Evening/...)
+    SHIFT_KEYWORDS = ['morning', 'evening', 'night', 'afternoon', 'day', 'on-call', 'duty']
+    shift_hints = {}
+    if header_idx + 1 < len(rows_raw):
+        potential_hints = rows_raw[header_idx + 1]
+        is_hint_row = False
+        for i in staff_cols:
+            hint = str(potential_hints[i]).strip() if i < len(potential_hints) else ""
+            if hint:
+                # Only treat as a hint if it contains a shift keyword
+                if any(k in hint.lower() for k in SHIFT_KEYWORDS):
+                    # Clean hint: "Morning /Time" -> "Morning"
+                    hint_clean = _re.split(r'[\/:\(]', hint)[0].strip()
+                    shift_hints[i] = hint_clean
+                    is_hint_row = True
+        
+        # If no keywords found, clear hints to avoid misidentification
+        if not is_hint_row:
+            shift_hints = {}
 
-    # Validate that a staff column exists
-    first_row = rows[0]
-    found_staff_col = any(a in first_row for a in STAFF_ALIASES)
-    if not found_staff_col:
-        detected = list(first_row.keys())
-        raise ValueError(
-            f"Could not find a staff name column. "
-            f"Detected columns: {detected}. "
-            f"Expected one of: {STAFF_ALIASES}"
-        )
-
-    # Clear old assignments before import
+    # Clear old assignments
     repository.clear_assignments(db, roster_day_id)
-
+    
     assignments = []
     errors = []
+    
+    def parse_cell_staff(cell_text: str):
+        """Split cell by newline or common separators and extract time hints."""
+        # Normalize: replace + or & with \n to treat them as separate lines
+        cell_text = cell_text.replace('+', '\n').replace('&', '\n')
+        lines = [l.strip() for l in cell_text.split('\n') if l.strip()]
+        results = []
+        for line in lines:
+            # Extract time hint like (9am-4pm)
+            time_match = _re.search(r'\((?:From\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\)', line, _re.IGNORECASE)
+            start_t, end_t = time(8, 0), time(16, 0)
+            if time_match:
+                start_t = _parse_time(time_match.group(1)) or start_t
+                end_t = _parse_time(time_match.group(2)) or end_t
+            
+            # Strip time and Role markers like (Ped) or (Gen) if they wrap a time
+            clean_name = _re.sub(r'\s*\([^)]*\d+[^)]*\)', '', line).strip()
+            # Also strip anything after Dr if it looks like a name but has trailing notes
+            clean_name = _re.sub(r'\(.*?\)', '', clean_name).strip()
+            
+            if clean_name:
+                results.append((clean_name, start_t, end_t))
+        return results
 
-    # Non-person desk/role placeholder labels — skip these rows
-    SKIP_PATTERNS = ['billing desk', 'help desk', 'helpdesk', 'reception desk', 'front desk']
+    # Process data rows
+    for r_idx in range(header_idx + 1, len(rows_raw)):
+        row = rows_raw[r_idx]
+        # Skip if it's the shift-hint row we already processed (if any)
+        if any(h in str(cell) for cell in row for h in shift_hints.values()):
+            if r_idx < header_idx + 3: continue 
 
-    import re as _re
+        dept_val = row[dept_idx] if dept_idx != -1 and dept_idx < len(row) else ""
+        dept = find_dept(dept_val)
+        dept_id = dept.id if dept else 0
 
-    def is_placeholder(name: str) -> bool:
-        return any(p in name.strip().lower() for p in SKIP_PATTERNS)
+        for s_idx in staff_cols:
+            if s_idx >= len(row): continue
+            cell_content = row[s_idx]
+            if not cell_content or len(cell_content) < 3: continue
+            
+            shift_label = shift_hints.get(s_idx, "Day")
+            
+            # Use specific time columns if they exist
+            row_start = row[start_time_idx] if start_time_idx != -1 and start_time_idx < len(row) else None
+            row_end = row[end_time_idx] if end_time_idx != -1 and end_time_idx < len(row) else None
+            
+            from datetime import time as dt_time
+            def get_time(val, default):
+                if isinstance(val, dt_time): return val
+                if not val: return default
+                return _parse_time(str(val)) or default
 
-    def strip_time_hint(name: str) -> str:
-        """Remove trailing time annotations like '(8am-2pm)' or '(9am-4pm)' but NOT qualifiers like '(Ped)'."""
-        # Only strip parenthetical content that looks like a time: contains a digit followed by am/pm or ':'
-        return _re.sub(r'\s*\(\d[^)]*(?:am|pm|AM|PM|:)\d*[^)]*\)', '', name).strip()
+            staff_entries = parse_cell_staff(cell_content)
+            for s_name, s_start, s_end in staff_entries:
+                # Override with row-level times if available
+                final_start = get_time(row_start, s_start)
+                final_end = get_time(row_end, s_end)
+                
+                staff = get_or_create_staff(s_name, dept_id)
+                if staff:
+                    assignments.append(schemas.RosterAssignmentCreate(
+                        roster_day_id=roster_day_id,
+                        department_id=dept_id,
+                        unit_id=None,
+                        staff_id=staff.id,
+                        shift_start_time=final_start,
+                        shift_end_time=final_end,
+                        shift_label=shift_label,
+                        phone=staff.phone_number
+                    ))
+                else:
+                    errors.append(f"Row {r_idx+1}: Could not find or create staff '{s_name}'")
 
-    def split_combined(name: str):
-        """Split 'A+B' or 'A&B' into ['A', 'B'] when both sides look like real names."""
-        parts = _re.split(r'\s*[+&]\s*', name)
-        if len(parts) > 1:
-            parts = [p.strip() for p in parts if p.strip()]
-            if all(1 < len(p) <= 40 for p in parts):
-                return parts
-        return [name]
-
-    for i, row in enumerate(rows, start=2):  # row 1 is header
-        dept_name   = get(row, *DEPT_ALIASES)
-        staff_name  = get(row, *STAFF_ALIASES)
-        shift_label = get(row, *SHIFT_ALIASES)
-        start_str   = get(row, *START_ALIASES)
-        end_str     = get(row, *END_ALIASES)
-
-        if not staff_name:
-            continue  # skip truly empty rows
-
-        # Strip time hints before matching (e.g. "Nadine R(8am-2pm)" -> "Nadine R")
-        staff_name = strip_time_hint(staff_name)
-
-        # Skip non-person desk/role placeholders
-        if is_placeholder(staff_name):
-            errors.append(f"Row {i}: '{staff_name}' — skipped (desk/role placeholder, not a person)")
-            continue
-
-        dept = find_dept(dept_name) if dept_name else None
-        # Use Physiotherapy ID as fallback instead of 0
-        physio = dept_map.get("physiotherapy")
-        dept_id = dept.id if dept else (physio.id if physio else 0)
-
-        start_t = _parse_time(start_str)
-        end_t   = _parse_time(end_str)
-
-        if not start_t or not end_t:
-            errors.append(f"Row {i}: '{staff_name}' — could not parse times '{start_str}'/'{end_str}', using 08:00–16:00 default")
-            start_t = start_t or time(8, 0)
-            end_t   = end_t   or time(16, 0)
-
-        # Handle combined-name cells: "Gad+Gaston", "Etienne+Irene", "Nelson &Ishimwe"
-        individual_names = split_combined(staff_name)
-
-        for name in individual_names:
-            staff = find_staff(name)
-            if staff is None:
-                errors.append(f"Row {i}: '{name}' — no matching active staff found (skipped)")
-                continue
-
-            assignments.append(schemas.RosterAssignmentCreate(
-                roster_day_id=roster_day_id,
-                department_id=dept_id,
-                unit_id=None,
-                staff_id=staff.id,
-                shift_start_time=start_t,
-                shift_end_time=end_t,
-                shift_label=shift_label or "Day",
-                phone=staff.phone_number
-            ))
+    if not assignments:
+        repository.log_audit_action(db, user_id, "UPLOAD_FAILED", {"file": "docx/xlsx", "errors": errors})
+        return 0, errors
 
     repository.bulk_create_assignments(db, assignments)
     repository.log_audit_action(
@@ -372,13 +433,15 @@ def get_roster_summary(db: Session, roster_day_id: int):
         staff_role = (user.role.name if user and user.role else "Staff")
             
         dep_map[d_id]["units"][u_id]["assignments"].append({
+            "id": a.id,
             "staff_id": a.staff_id,
             "staff_name": staff_name,
             "role": staff_role,
             "shift_start_time": a.shift_start_time,
             "shift_end_time": a.shift_end_time,
             "shift_label": a.shift_label,
-            "phone": a.phone
+            "phone": a.phone,
+            "room_number": user.room_number if user else None
         })
 
     # Convert to schema shape

@@ -32,6 +32,7 @@ export default function AdminDashboard() {
     const [filterEndDate, setFilterEndDate] = useState('');
     const [editingUser, setEditingUser] = useState(null);
     const [selectedPatientModal, setSelectedPatientModal] = useState(null);
+    const [usersError, setUsersError] = useState(null);
 
     // Password Reset State
     const [resetPasswordUser, setResetPasswordUser] = useState(null);
@@ -102,8 +103,21 @@ export default function AdminDashboard() {
     };
 
     const fetchUsers = async () => {
-        const res = await fetch(`${API_URL}/users`, { headers: authHeader });
-        setUsers(await res.json());
+        setUsersError(null);
+        try {
+            const res = await fetch(`${API_URL}/users`, { headers: authHeader });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ detail: "Failed to fetch users" }));
+                throw new Error(errorData.detail || `Server error: ${res.status}`);
+            }
+            setUsers(await res.json());
+        } catch (e) {
+            console.error(e);
+            setUsersError(e.message === 'Failed to fetch'
+                ? "Connection lost to backend. This is likely caused by a browser security setting or a required SSL certificate that hasn't been accepted."
+                : e.message
+            );
+        }
     };
     const fetchRoles = async () => {
         const res = await fetch(`${API_URL}/roles`, { headers: authHeader });
@@ -542,6 +556,27 @@ export default function AdminDashboard() {
                                         </button>
                                     </div>
                                 </div>
+
+                                {usersError && (
+                                    <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl mb-8 flex flex-col md:flex-row items-center gap-5 animate-in slide-in-from-top-4 duration-500">
+                                        <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl shadow-inner">
+                                            <AlertTriangle size={32} />
+                                        </div>
+                                        <div className="flex-1 text-center md:text-left">
+                                            <h4 className="font-bold text-amber-900 text-lg mb-1">Backend Connection Issue</h4>
+                                            <p className="text-sm text-amber-800 leading-relaxed font-medium">
+                                                {usersError} <br className="hidden lg:block" />
+                                                Please click the button to the right, then click <strong>"Advanced"</strong> and <strong>"Proceed to..."</strong> to authorize the connection.
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => window.open(`${API_URL}/stats`, '_blank')}
+                                            className="px-8 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-xl shadow-amber-600/30 transition-all hover:-translate-y-0.5 active:scale-95 flex items-center gap-2 whitespace-nowrap"
+                                        >
+                                            <Activity size={18} /> Authorize Connection
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="overflow-x-auto -mx-6">
                                     <table className="w-full text-left border-collapse min-w-[800px]">

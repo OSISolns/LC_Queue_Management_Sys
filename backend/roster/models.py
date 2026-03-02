@@ -14,19 +14,6 @@ class Unit(Base):
     department = relationship("Department")
 
 
-class Staff(Base):
-    __tablename__ = "staff"
-
-    id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String, index=True, nullable=False)
-    role = Column(String, index=True, nullable=False)
-    phone = Column(String, nullable=True)
-    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
-    is_active = Column(Boolean, default=True)
-
-    department = relationship("Department")
-
-
 class Shift(Base):
     __tablename__ = "shifts"
 
@@ -56,7 +43,7 @@ class RosterAssignment(Base):
     roster_day_id = Column(Integer, ForeignKey("roster_days.id"), nullable=False)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=False)
     unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
-    staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False)
+    staff_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     shift_start_time = Column(Time, nullable=False)
     shift_end_time = Column(Time, nullable=False)
@@ -68,19 +55,19 @@ class RosterAssignment(Base):
     roster_day = relationship("RosterDay", back_populates="assignments")
     department = relationship("Department")
     unit = relationship("Unit")
-    staff = relationship("Staff")
+    staff = relationship("User")
 
 
 class StaffAvailability(Base):
     __tablename__ = "staff_availability"
 
     id = Column(Integer, primary_key=True, index=True)
-    staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False)
+    staff_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(Date, index=True, nullable=False)
     available = Column(Boolean, default=True)
     reason = Column(String, nullable=True)
 
-    staff = relationship("Staff")
+    staff = relationship("User")
 
 
 class AuditLog(Base):

@@ -182,6 +182,24 @@ def update_assignment(
     return assignment
 
 
+@router.delete("/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_assignment(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
+):
+    """Remove an assignment from the roster."""
+    assignment = db.query(models.RosterAssignment).filter(models.RosterAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    db.delete(assignment)
+    db.commit()
+    
+    repository.log_audit_action(db, current_user.id, "DELETE_ASSIGNMENT", {"assignment_id": assignment_id})
+    return None
+
+
 # --- Shared Endpoints (Accessible to any active staff user) ---
 
 @router.get("/days/{roster_day_id}", response_model=schemas.RosterDayDetailResponse)

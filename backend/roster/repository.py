@@ -35,13 +35,13 @@ def update_roster_day_status(db: Session, roster_day_id: int, status: str):
     return roster
 
 def get_staff_by_department(db: Session, department_id: int):
-    return db.query(models.Staff).filter(
-        models.Staff.department_id == department_id,
-        models.Staff.is_active == True
+    return db.query(User).filter(
+        User.department_id == department_id,
+        User.is_active == True
     ).all()
 
 def get_all_staff(db: Session):
-    return db.query(models.Staff).filter(models.Staff.is_active == True).all()
+    return db.query(User).filter(User.is_active == True).all()
 
 def get_active_shifts(db: Session):
     return db.query(models.Shift).all()
@@ -78,10 +78,12 @@ def get_assignments_for_day(db: Session, roster_day_id: int):
     ).all()
 
 def log_audit_action(db: Session, user_id: int, action: str, payload: dict):
+    # Ensure payload is JSON serializable (handles datetime, time, etc.)
+    serializable_payload = json.loads(json.dumps(payload, default=str))
     log = models.AuditLog(
         actor_user_id=user_id,
         action=action,
-        payload_json=payload
+        payload_json=serializable_payload
     )
     db.add(log)
     db.commit()

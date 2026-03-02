@@ -80,6 +80,7 @@ class RosterAssignmentResponse(RosterAssignmentBase):
 
 # --- Grouped Roster Response ---
 class UnitRosterStaff(BaseModel):
+    id: int
     staff_id: int
     staff_name: str
     role: str
@@ -87,6 +88,7 @@ class UnitRosterStaff(BaseModel):
     shift_end_time: time
     shift_label: str
     phone: Optional[str] = None
+    room_number: Optional[str] = None
 
 class UnitRosterGroup(BaseModel):
     unit_id: Optional[int]

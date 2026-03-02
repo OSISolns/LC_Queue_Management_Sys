@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, ChevronLeft, ChevronRight, Users2, RefreshCcw, Building2, Phone, X, User as UserIcon, Info } from 'lucide-react'
+import { Calendar, Clock, ChevronLeft, ChevronRight, Users2, RefreshCcw, Building2, Phone, X, User as UserIcon, Info, MapPin, Edit3, Trash2, Save, AlertCircle, Check } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 const API_URL = "https://" + window.location.hostname + ":8000"
 
@@ -77,6 +78,16 @@ export default function RosterViewer({ token }) {
     const [filterDept, setFilterDept] = useState('all')
     const [selectedStaff, setSelectedStaff] = useState(null)
     const [tick, setTick] = useState(0)
+    const { user } = useAuth()
+
+    // Edit State
+    const [isEditing, setIsEditing] = useState(false)
+    const [editData, setEditData] = useState(null)
+    const [isSaving, setIsSaving] = useState(false)
+    const [isDeleting, setIsDeleting] = useState(false)
+    const [deleteConfirm, setDeleteConfirm] = useState(false)
+
+    const isAdmin = user?.role === 'Admin'
 
     useEffect(() => {
         const timer = setInterval(() => setTick(t => t + 1), 60000)
@@ -113,6 +124,89 @@ export default function RosterViewer({ token }) {
         const d = new Date(date)
         d.setDate(d.getDate() + delta)
         setDate(toDateStr(d))
+    }
+
+    const handleEditStart = () => {
+        setEditData({
+            shift_label: selectedStaff.shift_label,
+            shift_start_time: selectedStaff.shift_start_time,
+            shift_end_time: selectedStaff.shift_end_time,
+            room_number: selectedStaff.room_number || ''
+        })
+        setIsEditing(true)
+    }
+
+    const handleUpdate = async () => {
+        if (!selectedStaff?.id) return
+        setIsSaving(true)
+        try {
+            const tk = token || localStorage.getItem('token')
+            const res = await fetch(`${API_URL}/roster/assignments/${selectedStaff.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${tk}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(editData)
+            })
+            if (res.ok) {
+                const updated = await res.json()
+                // Update local roster state
+                setRoster(prev => ({
+                    ...prev,
+                    departments: prev.departments.map(d => ({
+                        ...d,
+                        units: d.units.map(u => ({
+                            ...u,
+                            assignments: u.assignments.map(a =>
+                                a.id === selectedStaff.id ? { ...a, ...editData } : a
+                            )
+                        }))
+                    }))
+                }))
+                setSelectedStaff(prev => ({ ...prev, ...editData }))
+                setIsEditing(false)
+            } else {
+                alert('Failed to update assignment')
+            }
+        } catch (e) {
+            alert('Error updating assignment')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleDelete = async () => {
+        if (!selectedStaff?.id) return
+        setIsDeleting(true)
+        try {
+            const tk = token || localStorage.getItem('token')
+            const res = await fetch(`${API_URL}/roster/assignments/${selectedStaff.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${tk}` }
+            })
+            if (res.ok) {
+                // Update local roster state
+                setRoster(prev => ({
+                    ...prev,
+                    departments: prev.departments.map(d => ({
+                        ...d,
+                        units: d.units.map(u => ({
+                            ...u,
+                            assignments: u.assignments.filter(a => a.id !== selectedStaff.id)
+                        }))
+                    }))
+                }))
+                setSelectedStaff(null)
+                setDeleteConfirm(false)
+            } else {
+                alert('Failed to delete assignment')
+            }
+        } catch (e) {
+            alert('Error deleting assignment')
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     const allDepts = roster?.departments?.map(d => d.department_name) ?? []
@@ -263,10 +357,21 @@ export default function RosterViewer({ token }) {
 
                     {/* Modal body */}
                     <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-white/50 overflow-hidden animate-in zoom-in-95 fade-in duration-300">
+                        {/* Status bar for editing/deleting */}
+                        {(isSaving || isDeleting) && (
+                            <div className="absolute inset-0 z-[110] bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
+                                <RefreshCcw size={32} className="text-[#065590] animate-spin" />
+                            </div>
+                        )}
+
                         {/* Header color strip */}
                         <div className={`h-24 ${shiftColor(selectedStaff.shift_label)} flex items-end justify-center pb-4 relative`}>
                             <button
-                                onClick={() => setSelectedStaff(null)}
+                                onClick={() => {
+                                    setSelectedStaff(null)
+                                    setIsEditing(false)
+                                    setDeleteConfirm(false)
+                                }}
                                 className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/40 rounded-full transition-colors text-slate-700"
                             >
                                 <X size={20} />
@@ -284,58 +389,169 @@ export default function RosterViewer({ token }) {
                             </div>
 
                             <div className="space-y-4 text-left">
-                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-4 hover:bg-white hover:shadow-sm transition-all">
-                                    <div className="p-2 bg-blue-100 text-[#065590] rounded-xl">
-                                        <Clock size={20} />
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Duty Shift</div>
-                                        <div className="text-sm font-bold text-slate-700">
-                                            {selectedStaff.shift_label} ({fmt(selectedStaff.shift_start_time)} – {fmt(selectedStaff.shift_end_time)})
+                                {isEditing ? (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">Shift Label</label>
+                                            <input
+                                                type="text"
+                                                value={editData.shift_label}
+                                                onChange={e => setEditData({ ...editData, shift_label: e.target.value })}
+                                                className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
+                                            />
                                         </div>
-                                    </div>
-                                </div>
-
-                                {selectedStaff.phone && (
-                                    <a
-                                        href={`tel:${selectedStaff.phone}`}
-                                        className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 flex items-center gap-4 hover:bg-emerald-100 hover:shadow-md transition-all group"
-                                    >
-                                        <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl group-hover:scale-110 transition-transform">
-                                            <Phone size={20} />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">Start Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={editData.shift_start_time}
+                                                    onChange={e => setEditData({ ...editData, shift_start_time: e.target.value })}
+                                                    className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">End Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={editData.shift_end_time}
+                                                    onChange={e => setEditData({ ...editData, shift_end_time: e.target.value })}
+                                                    className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
+                                                />
+                                            </div>
                                         </div>
                                         <div>
-                                            <div className="text-[10px] font-bold text-emerald-600/60 uppercase tracking-wide">Contact Number</div>
-                                            <div className="text-sm font-bold">{selectedStaff.phone}</div>
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">Room Number</label>
+                                            <input
+                                                type="text"
+                                                value={editData.room_number}
+                                                onChange={e => setEditData({ ...editData, room_number: e.target.value })}
+                                                className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
+                                                placeholder="e.g. 101"
+                                            />
                                         </div>
-                                    </a>
-                                )}
+                                        <div className="flex gap-2 pt-2">
+                                            <button
+                                                onClick={handleUpdate}
+                                                className="flex-1 bg-[#065590] text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#04437a] transition-all"
+                                            >
+                                                <Save size={16} /> Save Changes
+                                            </button>
+                                            <button
+                                                onClick={() => setIsEditing(false)}
+                                                className="px-4 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : deleteConfirm ? (
+                                    <div className="p-6 bg-red-50 border border-red-100 rounded-2xl space-y-4 animate-in zoom-in-95 duration-200">
+                                        <div className="flex items-center gap-3 text-red-600">
+                                            <AlertCircle size={24} />
+                                            <p className="font-bold text-sm">Delete this assignment?</p>
+                                        </div>
+                                        <p className="text-xs text-red-500">This will remove {selectedStaff.staff_name} from the roster for this date. Action cannot be undone.</p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleDelete}
+                                                className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-xs hover:bg-red-700 transition-all"
+                                            >
+                                                Confirm Delete
+                                            </button>
+                                            <button
+                                                onClick={() => setDeleteConfirm(false)}
+                                                className="flex-1 bg-white border border-red-200 text-red-600 py-2.5 rounded-xl font-bold text-xs hover:bg-red-50 transition-all"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-4 hover:bg-white hover:shadow-sm transition-all">
+                                            <div className="p-2 bg-blue-100 text-[#065590] rounded-xl">
+                                                <Clock size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Duty Shift</div>
+                                                <div className="text-sm font-bold text-slate-700">
+                                                    {selectedStaff.shift_label} ({fmt(selectedStaff.shift_start_time)} – {fmt(selectedStaff.shift_end_time)})
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                <div className={`p-4 rounded-2xl border transition-all ${isCurrentlyOnDuty(date, selectedStaff.shift_start_time, selectedStaff.shift_end_time)
-                                    ? 'bg-emerald-50/50 text-emerald-700 border-emerald-100'
-                                    : 'bg-slate-50 text-slate-400 border-slate-100'
-                                    } flex items-center gap-4`}>
-                                    <div className={`p-2 rounded-xl ${isCurrentlyOnDuty(date, selectedStaff.shift_start_time, selectedStaff.shift_end_time)
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-slate-100 text-slate-400'
-                                        }`}>
-                                        <Info size={20} />
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] font-bold uppercase tracking-wide opacity-60">Current Status</div>
-                                        <div className="text-sm font-bold flex items-center gap-1.5">
-                                            {isCurrentlyOnDuty(date, selectedStaff.shift_start_time, selectedStaff.shift_end_time) ? (
-                                                <>
-                                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> On Duty
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="w-2 h-2 rounded-full bg-slate-300" /> Off Duty / Shift Ended
-                                                </>
-                                            )}
+                                        {selectedStaff.phone && (
+                                            <a
+                                                href={`tel:${selectedStaff.phone}`}
+                                                className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 flex items-center gap-4 hover:bg-emerald-100 hover:shadow-md transition-all group"
+                                            >
+                                                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl group-hover:scale-110 transition-transform">
+                                                    <Phone size={20} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-bold text-emerald-600/60 uppercase tracking-wide">Contact Number</div>
+                                                    <div className="text-sm font-bold">{selectedStaff.phone}</div>
+                                                </div>
+                                            </a>
+                                        )}
+
+                                        {(selectedStaff.role === 'Doctor' || selectedStaff.role === 'Technician') && selectedStaff.room_number && (
+                                            <div className="p-4 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-100 flex items-center gap-4 hover:bg-indigo-100 hover:shadow-md transition-all group">
+                                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl group-hover:scale-110 transition-transform">
+                                                    <MapPin size={20} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-bold text-indigo-600/60 uppercase tracking-wide">Assigned Room</div>
+                                                    <div className="text-sm font-bold">Room {selectedStaff.room_number}</div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className={`p-4 rounded-2xl border transition-all ${isCurrentlyOnDuty(date, selectedStaff.shift_start_time, selectedStaff.shift_end_time)
+                                            ? 'bg-emerald-50/50 text-emerald-700 border-emerald-100'
+                                            : 'bg-slate-50 text-slate-400 border-slate-100'
+                                            } flex items-center gap-4`}>
+                                            <div className={`p-2 rounded-xl ${isCurrentlyOnDuty(date, selectedStaff.shift_start_time, selectedStaff.shift_end_time)
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-slate-100 text-slate-400'
+                                                }`}>
+                                                <Info size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] font-bold uppercase tracking-wide opacity-60">Current Status</div>
+                                                <div className="text-sm font-bold flex items-center gap-1.5">
+                                                    {isCurrentlyOnDuty(date, selectedStaff.shift_start_time, selectedStaff.shift_end_time) ? (
+                                                        <>
+                                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> On Duty
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="w-2 h-2 rounded-full bg-slate-300" /> Off Duty / Shift Ended
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
+
+                                        {isAdmin && (
+                                            <div className="flex gap-2 pt-2">
+                                                <button
+                                                    onClick={handleEditStart}
+                                                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-200 transition-all"
+                                                >
+                                                    <Edit3 size={14} /> Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => setDeleteConfirm(true)}
+                                                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs hover:bg-red-100 transition-all hover:border-red-200 border border-transparent"
+                                                >
+                                                    <Trash2 size={14} /> Delete
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </div>
 

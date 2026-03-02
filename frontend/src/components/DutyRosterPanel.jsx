@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import RosterViewer from './RosterViewer';
 
-const API_URL = 'https://localhost:8000';
+const API_URL = "https://" + window.location.hostname + ":8000";
 
 export default function DutyRosterPanel({ authHeader }) {
     const [activeTab, setActiveTab] = useState('upload');
