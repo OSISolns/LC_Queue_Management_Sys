@@ -131,6 +131,7 @@ export default function RosterViewer({ token }) {
             shift_label: selectedStaff.shift_label,
             shift_start_time: selectedStaff.shift_start_time,
             shift_end_time: selectedStaff.shift_end_time,
+            phone: selectedStaff.phone || '',
             room_number: selectedStaff.room_number || ''
         })
         setIsEditing(true)
@@ -420,15 +421,27 @@ export default function RosterViewer({ token }) {
                                                 />
                                             </div>
                                         </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">Room Number</label>
-                                            <input
-                                                type="text"
-                                                value={editData.room_number}
-                                                onChange={e => setEditData({ ...editData, room_number: e.target.value })}
-                                                className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
-                                                placeholder="e.g. 101"
-                                            />
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">Phone Ext.</label>
+                                                <input
+                                                    type="text"
+                                                    value={editData.phone}
+                                                    onChange={e => setEditData({ ...editData, phone: e.target.value })}
+                                                    className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
+                                                    placeholder="e.g. 1234"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-1">Room No.</label>
+                                                <input
+                                                    type="text"
+                                                    value={editData.room_number}
+                                                    onChange={e => setEditData({ ...editData, room_number: e.target.value })}
+                                                    className="w-full mt-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#065590] outline-none text-sm font-bold"
+                                                    placeholder="e.g. 101"
+                                                />
+                                            </div>
                                         </div>
                                         <div className="flex gap-2 pt-2">
                                             <button
@@ -481,30 +494,33 @@ export default function RosterViewer({ token }) {
                                             </div>
                                         </div>
 
-                                        {selectedStaff.phone && (
-                                            <a
-                                                href={`tel:${selectedStaff.phone}`}
-                                                className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 flex items-center gap-4 hover:bg-emerald-100 hover:shadow-md transition-all group"
-                                            >
-                                                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl group-hover:scale-110 transition-transform">
-                                                    <Phone size={20} />
-                                                </div>
-                                                <div>
-                                                    <div className="text-[10px] font-bold text-emerald-600/60 uppercase tracking-wide">Contact Number</div>
-                                                    <div className="text-sm font-bold">{selectedStaff.phone}</div>
-                                                </div>
-                                            </a>
-                                        )}
-
-                                        {(selectedStaff.role === 'Doctor' || selectedStaff.role === 'Technician') && selectedStaff.room_number && (
-                                            <div className="p-4 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-100 flex items-center gap-4 hover:bg-indigo-100 hover:shadow-md transition-all group">
-                                                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl group-hover:scale-110 transition-transform">
-                                                    <MapPin size={20} />
-                                                </div>
-                                                <div>
-                                                    <div className="text-[10px] font-bold text-indigo-600/60 uppercase tracking-wide">Assigned Room</div>
-                                                    <div className="text-sm font-bold">Room {selectedStaff.room_number}</div>
-                                                </div>
+                                        {(selectedStaff.phone || selectedStaff.room_number) && (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {selectedStaff.phone && (
+                                                    <a
+                                                        href={`tel:${selectedStaff.phone}`}
+                                                        className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 flex items-center gap-3 hover:bg-emerald-100 hover:shadow-md transition-all group"
+                                                    >
+                                                        <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-xl group-hover:scale-110 transition-transform">
+                                                            <Phone size={16} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="text-[9px] font-bold text-emerald-600/60 uppercase tracking-wide">Phone Ext.</div>
+                                                            <div className="text-sm font-bold truncate">{selectedStaff.phone}</div>
+                                                        </div>
+                                                    </a>
+                                                )}
+                                                {selectedStaff.room_number && (
+                                                    <div className="p-3 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-100 flex items-center gap-3 hover:bg-indigo-100 hover:shadow-md transition-all group">
+                                                        <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-xl group-hover:scale-110 transition-transform">
+                                                            <MapPin size={16} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="text-[9px] font-bold text-indigo-600/60 uppercase tracking-wide">Room No.</div>
+                                                            <div className="text-sm font-bold truncate">Room {selectedStaff.room_number}</div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 

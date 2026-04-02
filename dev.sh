@@ -40,6 +40,13 @@ echo ""
 # Wait for backend to be ready
 sleep 3
 
+# Start AI Service
+echo "🚀 Starting AI service..."
+uvicorn ai_service.main:app --host 0.0.0.0 --port 8001 --reload &
+AI_PID=$!
+echo "✅ AI Service running (PID: $AI_PID)"
+echo ""
+
 # Start frontend
 echo "🚀 Starting frontend server..."
 cd frontend
@@ -47,26 +54,45 @@ npm run dev &
 FRONTEND_PID=$!
 cd ..
 
+# Start Patient Portal
+echo "🚀 Starting patient portal server..."
+cd patient-portal
+npm run dev &
+PORTAL_PID=$!
+cd ..
+
+# Start Nursing Portal
+echo "🚀 Starting nursing portal server..."
+cd nursing-portal
+npm run dev &
+NURSING_PID=$!
+cd ..
+
 echo ""
 echo "=========================================="
-echo "✅ System Started Successfully!"
+echo "✅ All 5 Services Started Successfully!"
 echo "=========================================="
 echo ""
 echo "📍 Access Points:"
-echo "   Backend:  https://localhost:8000"
-echo "   Frontend: https://localhost:5173"
+echo "   Backend:        https://localhost:8000"
+echo "   AI Service:     http://localhost:8001"
+echo "   Frontend:       https://localhost:5173"
+echo "   Patient Portal: http://localhost:5174"
+echo "   Nursing Portal: http://localhost:5175"
 echo ""
 echo "🏥 Interfaces:"
-echo "   Kiosk:     https://localhost:5173/kiosk"
-echo "   Dashboard: https://localhost:5173/dashboard"
-echo "   Display:   https://localhost:5173/display"
+echo "   Kiosk:          https://localhost:5173/kiosk"
+echo "   Dashboard:      https://localhost:5173/dashboard"
+echo "   Display:        https://localhost:5173/display"
+echo "   Patient Portal: http://localhost:5174"
+echo "   Nursing Portal: http://localhost:5175"
 echo ""
 echo "⌨️  Press Ctrl+C to stop all servers"
 echo "=========================================="
 echo ""
 
-# Handle Ctrl+C to kill both processes
-trap "echo ''; echo 'Stopping servers...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT TERM
+# Handle Ctrl+C to kill all processes
+trap "echo ''; echo 'Stopping servers...'; kill $BACKEND_PID $AI_PID $FRONTEND_PID $PORTAL_PID $NURSING_PID 2>/dev/null; exit" INT TERM
 
 # Wait for processes
 wait

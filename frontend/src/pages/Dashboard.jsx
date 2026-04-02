@@ -21,9 +21,16 @@ export default function Dashboard() {
     const [currentPatient, setCurrentPatient] = useState(null)
     const [doctorId, setDoctorId] = useState(user?.id || null)
     const [roomNumber, setRoomNumber] = useState("")
-    const [timer, setTimer] = useState("00:00") // Consultation Timer usage
+    const [timer, setTimer] = useState("00:00")
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [selectedPatientModal, setSelectedPatientModal] = useState(null)
+    // Notes state
+    const [noteText, setNoteText] = useState('')
+    const [noteSaving, setNoteSaving] = useState(false)
+    const [noteSaved, setNoteSaved] = useState(false)
+    const [modalNoteText, setModalNoteText] = useState('')
+    const [modalNoteSaving, setModalNoteSaving] = useState(false)
+    const [modalNoteSaved, setModalNoteSaved] = useState(false)
 
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
@@ -162,6 +169,34 @@ export default function Dashboard() {
             socket.off('queue_update')
         }
     }, [roomNumber, user])
+
+    // When currentPatient changes, reset the note field
+    useEffect(() => {
+        if (currentPatient) {
+            setNoteText(currentPatient.doctor_notes || '')
+            setNoteSaved(false)
+        } else {
+            setNoteText('')
+        }
+    }, [currentPatient])
+
+    const saveNote = async (queueId, text, { onSaving, onSaved }) => {
+        onSaving(true)
+        try {
+            const token = user?.token || localStorage.getItem('token')
+            await fetch(`${API_URL}/queue/${queueId}/notes`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: text })
+            })
+            onSaved(true)
+            setTimeout(() => onSaved(false), 2500)
+        } catch (e) {
+            console.error(e)
+        } finally {
+            onSaving(false)
+        }
+    }
 
     const callNext = async () => {
         try {
@@ -337,10 +372,38 @@ export default function Dashboard() {
                                             <UserX size={20} /> No Show
                                         </button>
                                     </div>
+
+                                    {/* Doctor Notes */}
+                                    <div className="mb-4 text-left">
+                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                                            <FileText size={13} /> Consultation Notes
+                                        </label>
+                                        <textarea
+                                            value={noteText}
+                                            onChange={e => { setNoteText(e.target.value); setNoteSaved(false) }}
+                                            placeholder="Type your consultation notes here…"
+                                            rows={3}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 resize-none outline-none focus:border-[#065590] focus:ring-2 focus:ring-[#065590]/10 transition"
+                                        />
+                                        <button
+                                            onClick={() => saveNote(currentPatient.id, noteText, { onSaving: setNoteSaving, onSaved: setNoteSaved })}
+                                            disabled={noteSaving || !noteText.trim()}
+                                            className={`mt-2 w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${noteSaved
+                                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                                    : noteSaving
+                                                        ? 'bg-slate-100 text-slate-400 cursor-wait'
+                                                        : 'bg-[#065590]/10 text-[#065590] hover:bg-[#065590]/20 border border-[#065590]/20'
+                                                }`}
+                                        >
+                                            {noteSaved ? <><CheckCircle size={16} /> Saved</> : noteSaving ? 'Saving…' : <><FileText size={16} /> Save Notes</>}
+                                        </button>
+                                    </div>
+
                                     <button onClick={() => handleAction('complete')}
                                         className="w-full py-5 bg-gradient-to-r from-[#065590] to-[#04437a] hover:from-[#054a80] hover:to-[#033663] text-white text-xl font-bold rounded-xl shadow-xl shadow-blue-900/20 transition-all transform active:scale-[0.98] flex items-center justify-center gap-3 border border-white/10">
                                         <CheckCircle size={24} /> Mark Completed
                                     </button>
+
                                 </div>
                             ) : (
                                 <div className="py-12 text-slate-400 flex flex-col items-center animate-in fade-in zoom-in duration-500">
@@ -572,6 +635,44 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Notes section – shown for completed/serving/no-show only */}
+                            {selectedPatientModal.status !== 'waiting' && (
+                                <div className="border-t border-slate-100 pt-4">
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+                                        <FileText size={13} /> Doctor Notes
+                                    </label>
+                                    {selectedPatientModal.doctor_notes && !modalNoteSaved ? (
+                                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-slate-700 whitespace-pre-wrap mb-2">
+                                            {selectedPatientModal.doctor_notes}
+                                        </div>
+                                    ) : null}
+                                    <textarea
+                                        value={modalNoteText !== '' ? modalNoteText : (selectedPatientModal.doctor_notes || '')}
+                                        onChange={e => { setModalNoteText(e.target.value); setModalNoteSaved(false) }}
+                                        onFocus={e => { if (modalNoteText === '') setModalNoteText(selectedPatientModal.doctor_notes || '') }}
+                                        placeholder="Add or edit consultation notes…"
+                                        rows={3}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 resize-none outline-none focus:border-[#065590] focus:ring-2 focus:ring-[#065590]/10 transition"
+                                    />
+                                    <button
+                                        onClick={() => saveNote(
+                                            selectedPatientModal.id,
+                                            modalNoteText || selectedPatientModal.doctor_notes || '',
+                                            { onSaving: setModalNoteSaving, onSaved: setModalNoteSaved }
+                                        )}
+                                        disabled={modalNoteSaving || !(modalNoteText || selectedPatientModal.doctor_notes)}
+                                        className={`mt-2 w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${modalNoteSaved
+                                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                                : modalNoteSaving
+                                                    ? 'bg-slate-100 text-slate-400 cursor-wait'
+                                                    : 'bg-[#065590]/10 text-[#065590] hover:bg-[#065590]/20 border border-[#065590]/20'
+                                            }`}
+                                    >
+                                        {modalNoteSaved ? <><CheckCircle size={16} /> Saved</> : modalNoteSaving ? 'Saving…' : <><FileText size={16} /> Save Notes</>}
+                                    </button>
+                                </div>
+                            )}
 
                             {selectedPatientModal.status === 'waiting' && !currentPatient && (
                                 <button

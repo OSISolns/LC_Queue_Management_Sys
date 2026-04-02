@@ -4,7 +4,7 @@ from prometheus_client import make_asgi_app
 import logging
 
 from .config import settings
-from .routers import predict, recommend, forecast, alerts, admin
+from .routers import predict, recommend, forecast, alerts, admin, reports
 
 # Setup basic observable JSON-like logging 
 logging.basicConfig(
@@ -51,6 +51,7 @@ app.include_router(recommend.router, prefix=settings.API_V1_STR + "/recommend", 
 app.include_router(forecast.router, prefix=settings.API_V1_STR + "/forecast", tags=["forecast"])
 app.include_router(alerts.router, prefix=settings.API_V1_STR + "/alerts", tags=["alerts"])
 app.include_router(admin.router, prefix=settings.API_V1_STR + "/admin", tags=["admin"])
+app.include_router(reports.router, prefix=settings.API_V1_STR + "/reports", tags=["reports"])
 
 if __name__ == "__main__":
     import uvicorn

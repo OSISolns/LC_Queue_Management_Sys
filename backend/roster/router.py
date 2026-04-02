@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Body
 from sqlalchemy.orm import Session
-from datetime import date
-from typing import List
+from datetime import date, datetime, timedelta
+from typing import List, Optional
 import csv
 import io
 import os
+import asyncio
 from fastapi.responses import StreamingResponse
 
 # Import dependencies from main.py
 from backend.main import get_db, get_admin_user, get_current_active_user
 from backend.models import User
 from backend.roster import schemas, repository, service, models
+from backend.ai_client import ai_client
 
 router = APIRouter()
 
@@ -292,3 +294,162 @@ def export_roster_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=roster_{summary.date}.csv"}
     )
+
+
+# ==========================================
+# AI Roster Report Endpoint
+# ==========================================
+
+def _compute_date_range(period: str):
+    """Return (start_date, end_date) for the given period relative to today."""
+    today = date.today()
+    if period == "weekly":
+        # Current ISO week: Monday to Sunday
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+    elif period == "monthly":
+        start = today.replace(day=1)
+        # last day of the month
+        if today.month == 12:
+            end = today.replace(day=31)
+        else:
+            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+    elif period == "quarterly":
+        quarter = (today.month - 1) // 3  # 0-indexed quarter
+        start = today.replace(month=quarter * 3 + 1, day=1)
+        end_month = quarter * 3 + 3
+        if end_month == 12:
+            end = today.replace(month=12, day=31)
+        else:
+            end = today.replace(month=end_month + 1, day=1) - timedelta(days=1)
+    else:  # yearly
+        start = today.replace(month=1, day=1)
+        end = today.replace(month=12, day=31)
+    return start, end
+
+
+@router.get("/reports/ai-summary")
+async def get_ai_roster_report(
+    period: str = Query("weekly", description="weekly | monthly | quarterly | yearly"),
+    start_date: Optional[date] = Query(None, description="Override start date (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="Override end date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Gather roster assignments for the given period and forward them to the
+    AI service to generate insights, KPIs and a narrative report.
+    """
+    VALID_PERIODS = {"weekly", "monthly", "quarterly", "yearly"}
+    if period not in VALID_PERIODS:
+        raise HTTPException(status_code=400, detail=f"Invalid period. Choose from: {', '.join(VALID_PERIODS)}")
+
+    # Determine date window
+    if start_date and end_date:
+        s, e = start_date, end_date
+    else:
+        s, e = _compute_date_range(period)
+
+    # Fetch all roster days in the range (published only for accuracy)
+    from backend.roster import models as roster_models
+    from backend.models import Department
+
+    roster_days = (
+        db.query(roster_models.RosterDay)
+        .filter(
+            roster_models.RosterDay.date >= s,
+            roster_models.RosterDay.date <= e,
+        )
+        .all()
+    )
+
+    if not roster_days:
+        # Return graceful empty report
+        payload = {
+            "start_date": str(s),
+            "end_date": str(e),
+            "period": period,
+            "assignments": [],
+        }
+        return await ai_client.get_roster_insights(payload)
+
+    # Build assignment list for the AI service
+    dept_names = {d.id: d.name for d in db.query(Department).all()}
+    from backend.models import User as ClinicUser
+    user_map = {u.id: u for u in db.query(ClinicUser).all()}
+
+    assignments_payload = []
+    for rd in roster_days:
+        for a in db.query(roster_models.RosterAssignment).filter(
+            roster_models.RosterAssignment.roster_day_id == rd.id
+        ).all():
+            staff = user_map.get(a.staff_id)
+            dept_name = dept_names.get(a.department_id, f"Dept {a.department_id}")
+            assignments_payload.append({
+                "id": a.id,
+                "staff_id": a.staff_id,
+                "staff_name": (staff.full_name or staff.username) if staff else f"Staff {a.staff_id}",
+                "role": (staff.role.name if staff and staff.role else "Staff"),
+                "department_id": a.department_id,
+                "department_name": dept_name,
+                "shift_start_time": a.shift_start_time.strftime("%H:%M"),
+                "shift_end_time": a.shift_end_time.strftime("%H:%M"),
+                "shift_label": a.shift_label,
+                "date": str(rd.date),
+            })
+
+    payload = {
+        "start_date": str(s),
+        "end_date": str(e),
+        "period": period,
+        "assignments": assignments_payload,
+    }
+
+    return await ai_client.get_roster_insights(payload)
+
+# ==========================================
+# Nursing Portal - My Schedule
+# ==========================================
+
+@router.get("/my-schedule", response_model=List[schemas.MyScheduleResponse])
+def get_my_schedule(
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Fetch all upcoming roster assignments. Supports both JWT and user_id for QuickPortals."""
+    target_user_id = None
+    if current_user:
+        target_user_id = current_user.id
+    elif user_id:
+        target_user_id = user_id
+    
+    if not target_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+
+    # Fetch all published assignments for this user
+    assignments = db.query(models.RosterAssignment)\
+        .join(models.RosterDay)\
+        .filter(
+            models.RosterAssignment.staff_id == target_user_id,
+            models.RosterDay.status == "published"
+        )\
+        .order_by(models.RosterDay.date.desc())\
+        .all()
+    
+    result = []
+    for a in assignments:
+        result.append({
+            "id": a.id,
+            "date": a.roster_day.date,
+            "shift_label": a.shift_label,
+            "shift_start_time": a.shift_start_time,
+            "shift_end_time": a.shift_end_time,
+            "room_number": a.room_number,
+            "department_name": a.department.name if a.department else "N/A",
+            "unit_name": a.unit.name if a.unit else None
+        })
+    return result

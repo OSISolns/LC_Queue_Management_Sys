@@ -76,6 +76,7 @@ class VisitHistoryResponse(VisitHistoryBase):
     status: str
     created_at: datetime
     updated_at: datetime
+    doctor_name: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -143,6 +144,7 @@ class Department(DepartmentBase):
 class RoomBase(BaseModel):
     name: str
     floor: Optional[str] = None
+    extension: Optional[str] = None
 
 class RoomCreate(RoomBase):
     department_id: Optional[int] = None
@@ -151,6 +153,7 @@ class RoomUpdate(BaseModel):
     name: Optional[str] = None
     department_id: Optional[int] = None
     floor: Optional[str] = None
+    extension: Optional[str] = None
 
 class Room(RoomBase):
     id: int
@@ -185,6 +188,7 @@ class UserBase(BaseModel):
     email: Optional[str] = None
     phone_number: Optional[str] = None
     salutation: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -199,6 +203,7 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     phone_number: Optional[str] = None
     salutation: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 class User(UserBase):
     id: int
@@ -217,6 +222,7 @@ class Token(BaseModel):
     first_login_today: bool = False
     salutation: Optional[str] = None
     full_name: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 class TokenData(BaseModel):
     username: Optional[str] = None
@@ -295,3 +301,214 @@ class HistoryDeleteRequest(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
 
+# ==========================================
+# Secure File Sharing Hub Schemas
+# ==========================================
+
+class FileCategoryBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+class FileCategoryCreate(FileCategoryBase):
+    pass
+
+class FileCategoryResponse(FileCategoryBase):
+    id: int
+
+    class Config:
+        orm_mode = True
+
+class DocumentRoleAccessBase(BaseModel):
+    role_id: int
+    permission_type: str # "view_only" or "view_download"
+
+class DocumentRoleAccessCreate(DocumentRoleAccessBase):
+    pass
+
+class DocumentRoleAccessResponse(DocumentRoleAccessBase):
+    id: int
+    document_id: int
+    role: Optional[Role] = None
+
+    class Config:
+        orm_mode = True
+
+class DocumentBase(BaseModel):
+    original_name: str
+    category_id: Optional[int] = None
+
+class DocumentResponse(DocumentBase):
+    id: int
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    upload_date: datetime
+    uploaded_by_id: int
+    is_active: bool
+    role_access: List[DocumentRoleAccessResponse] = []
+    category: Optional[FileCategoryResponse] = None
+
+    class Config:
+        orm_mode = True
+
+class FileAuditLogResponse(BaseModel):
+    id: int
+    user_id: int
+    document_id: int
+    action: str
+    timestamp: datetime
+    ip_address: Optional[str] = None
+    user: Optional[User] = None
+    document: Optional[DocumentResponse] = None
+
+    class Config:
+        orm_mode = True
+
+# ==========================================
+# Patient Portal Schemas
+# ==========================================
+
+class AppointmentBase(BaseModel):
+    patient_id: int
+    doctor_id: int
+    appointment_date: datetime
+    reason: Optional[str] = None
+
+class AppointmentCreate(AppointmentBase):
+    pass
+
+class AppointmentUpdate(BaseModel):
+    appointment_date: Optional[datetime] = None
+    reason: Optional[str] = None
+    status: Optional[str] = None
+
+class AppointmentResponse(AppointmentBase):
+    id: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    
+    # We can add more info if needed
+    doctor_name: Optional[str] = None
+    patient_name: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+class DoctorReviewBase(BaseModel):
+    patient_id: int
+    doctor_id: int
+    rating: int  # 1-5
+    comment: Optional[str] = None
+
+class DoctorReviewCreate(DoctorReviewBase):
+    pass
+
+class DoctorReviewResponse(DoctorReviewBase):
+    id: int
+    created_at: datetime
+    patient_name: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+class PublicDoctorResponse(BaseModel):
+    id: int
+    full_name: Optional[str]
+    salutation: Optional[str]
+    department_name: Optional[str]
+    room_number: Optional[str]
+    email: Optional[str]
+    phone_number: Optional[str]
+    is_available: bool
+    average_rating: float = 0.0
+    review_count: int = 0
+    profile_picture: Optional[str] = None
+    roster: list = []
+
+    class Config:
+        orm_mode = True
+
+class PublicAppointment(BaseModel):
+    id: int
+    appointment_date: datetime
+    reason: Optional[str] = None
+    status: str
+    doctor_name: str
+    doctor_department: str
+
+class PublicMessage(BaseModel):
+    id: int
+    message_body: str
+    message_type: Optional[str] = None
+    sent_at: datetime
+
+class PatientDashboardResponse(BaseModel):
+    patient: PatientResponse
+    appointments: list[PublicAppointment] = []
+    messages: list[PublicMessage] = []
+
+# ==========================================
+# Observation & Medication Schemas
+# ==========================================
+
+class ObservationNoteBase(BaseModel):
+    patient_id: int
+    content: str
+    nurse_id: Optional[int] = None
+
+class ObservationNoteCreate(ObservationNoteBase):
+    pass
+
+class ObservationNoteResponse(ObservationNoteBase):
+    id: int
+    created_at: datetime
+    nurse_name: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+class MedicationAdministrationBase(BaseModel):
+    patient_id: int
+    medication_name: str
+    dosage: Optional[str] = None
+    route: Optional[str] = None
+    notes: Optional[str] = None
+    nurse_id: Optional[int] = None
+
+class MedicationAdministrationCreate(MedicationAdministrationBase):
+    pass
+
+class MedicationAdministrationResponse(MedicationAdministrationBase):
+    id: int
+    administered_at: datetime
+    nurse_name: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+class UserRoomUpdate(BaseModel):
+    room_number: str
+
+class PatientVitalsBase(BaseModel):
+    patient_id: int
+    temperature: Optional[str] = None
+    weight: Optional[str] = None
+    height: Optional[str] = None
+    blood_pressure: Optional[str] = None
+    heart_rate: Optional[str] = None
+    respiratory_rate: Optional[str] = None
+    spo2: Optional[str] = None
+    bmi: Optional[str] = None
+    notes: Optional[str] = None
+
+class PatientVitalsCreate(PatientVitalsBase):
+    nurse_id: Optional[int] = None
+
+class PatientVitalsResponse(PatientVitalsBase):
+    id: int
+    nurse_id: Optional[int]
+    nurse_name: Optional[str] = None
+    recorded_at: datetime
+
+    class Config:
+        orm_mode = True

@@ -7,7 +7,8 @@ import {
     PenSquare, UserPlus, Mail, Phone, Eye, EyeOff,
     Key, CheckCircle2, Ban, Trash2, Edit, AlertTriangle,
     DoorOpen, Hourglass, Volume2, Flag, Settings, Save, X, Calendar,
-    CalendarDays, Search, MapPin, Clock3, UserCircle, History, FileText
+    CalendarDays, Search, MapPin, Clock3, UserCircle, History, FileText,
+    Sparkles, TrendingUp, ChevronRight, RefreshCw, Clock as ClockIcon, BarChart2, Loader2
 } from 'lucide-react';
 import Clock from '../components/Clock';
 import DutyRosterPanel from '../components/DutyRosterPanel';
@@ -17,7 +18,14 @@ const API_URL = "https://" + window.location.hostname + ":8000";
 export default function AdminDashboard() {
     const { user, logout } = useAuth();
     const [activeTab, setActiveTab] = useState('panels');
+    const [reportActiveTab, setReportActiveTab] = useState('history');
     const [stats, setStats] = useState(null);
+
+    // AI Report State (admin-level)
+    const [aiPeriod, setAiPeriod] = useState('weekly');
+    const [aiReport, setAiReport] = useState(null);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState(null);
 
     // Data State
     const [users, setUsers] = useState([]);
@@ -46,8 +54,8 @@ export default function AdminDashboard() {
     const [purgePassword, setPurgePassword] = useState('');
     const [purgeReason, setPurgeReason] = useState('');
 
-    // Helpdesk Stations
-    const helpdeskStations = ['Ground Floor', 'First Floor', 'Pediatrics', 'VIP'];
+    // Helpdesk Stations (Dynamic)
+    const [helpdeskStations, setHelpdeskStations] = useState([]);
 
     // Form State
     const [newUser, setNewUser] = useState({ username: '', password: '', role_id: 1, department_id: '', room_number: '', full_name: '', email: '', phone_number: '', salutation: '' });
@@ -66,7 +74,7 @@ export default function AdminDashboard() {
 
     useEffect(() => {
         document.title = 'Admin Panel - Legacy Clinics'
-        fetchStats();
+        if (activeTab === 'panels') { fetchStats(); fetchRooms(); }
         if (activeTab === 'users') { fetchUsers(); fetchRoles(); fetchDepartments(); fetchRooms(); }
         if (activeTab === 'room_dept') { fetchDepartments(); fetchRooms(); }
         if (activeTab === 'reports') {
@@ -129,7 +137,22 @@ export default function AdminDashboard() {
     };
     const fetchRooms = async () => {
         const res = await fetch(`${API_URL}/rooms`, { headers: authHeader });
-        setRooms(await res.json());
+        if (res.ok) {
+            const data = await res.json();
+            setRooms(data);
+            
+            // Derive unique floors as stations
+            const floors = [...new Set(data.filter(r => r.floor).map(r => {
+                let f = r.floor.trim();
+                f = f.charAt(0).toUpperCase() + f.slice(1);
+                // Basic normalization for common floor names
+                if (f.toLowerCase() === 'ground' || f.toLowerCase() === 'first' || f.toLowerCase() === 'second') {
+                    return f + ' Floor';
+                }
+                return f;
+            }))];
+            setHelpdeskStations(floors.length > 0 ? floors.sort() : ['General']);
+        }
     };
     const fetchHistory = async () => {
         let params = new URLSearchParams({ limit: 1000 });
@@ -419,7 +442,7 @@ export default function AdminDashboard() {
                 flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all
                 ${activeTab === id
                     ? 'bg-gradient-to-r from-[#065590] to-[#04437a] text-white shadow-lg shadow-blue-900/20 transform -translate-y-0.5'
-                    : 'bg-white/50 text-slate-600 hover:text-[#065590] hover:bg-white border border-white/50 shadow-sm backdrop-blur-sm'}
+                    : 'bg-white/50 text-slate-800 hover:text-[#065590] hover:bg-white border border-white/50 shadow-sm backdrop-blur-sm'}
             `}
         >
             <span>{icon}</span>
@@ -427,8 +450,8 @@ export default function AdminDashboard() {
         </button>
     );
 
-    const inputClasses = "w-full p-3 border border-slate-200 rounded-xl bg-white/50 focus:bg-white focus:ring-4 focus:ring-[#065590]/20 focus:border-[#065590] outline-none transition-all placeholder:text-slate-400";
-    const labelClasses = "block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 ml-1";
+    const inputClasses = "w-full p-3 border border-slate-200 rounded-xl bg-white/50 focus:bg-white focus:ring-4 focus:ring-[#065590]/20 focus:border-[#065590] outline-none transition-all placeholder:text-slate-800";
+    const labelClasses = "block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 ml-1";
     const cardClasses = "bg-white/80 backdrop-blur-md p-8 rounded-3xl shadow-xl border border-white/50";
 
     return (
@@ -458,7 +481,7 @@ export default function AdminDashboard() {
                             <span className="text-[10px] bg-[#065590]/10 text-[#065590] px-1.5 py-0.5 rounded font-bold uppercase w-fit mt-0.5 tracking-wider">{user?.role}</span>
                         </div>
                     </div>
-                    <button onClick={logout} className="px-5 py-2.5 bg-white text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-bold border border-slate-200 shadow-sm hover:shadow-md hover:border-red-100 group flex items-center gap-2">
+                    <button onClick={logout} className="px-5 py-2.5 bg-white text-slate-800 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-bold border border-slate-200 shadow-sm hover:shadow-md hover:border-red-100 group flex items-center gap-2">
                         <LogOut size={16} />
                         <span className="hidden lg:inline">Sign Out</span>
                     </button>
@@ -488,12 +511,9 @@ export default function AdminDashboard() {
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                                 {[
-                                    { val: '/kiosk', label: 'Kiosk Station', desc: 'Patient Check-in', icon: <Smartphone size={24} />, color: 'bg-blue-500' },
-                                    { val: '/dashboard', label: "Doctor Dashboard", desc: 'Queue View', icon: <Stethoscope size={24} />, color: 'bg-emerald-500' },
                                     { val: '/display?floor=ground', label: 'Ground Floor', desc: 'Public Display', icon: <Monitor size={24} />, color: 'bg-purple-500' },
                                     { val: '/display?floor=first', label: 'First Floor', desc: 'Public Display', icon: <Monitor size={24} />, color: 'bg-purple-500' },
-                                    { val: '/display?department=Pediatrics', label: 'Pediatrics', desc: "Children's Display", icon: <Baby size={24} />, color: 'bg-orange-500' },
-                                    { val: '/display', label: 'Master Display', desc: 'All Queues', icon: <Monitor size={24} />, color: 'bg-slate-800' }
+                                    { val: '/display?department=Pediatrics', label: 'Pediatrics', desc: "Children's Display", icon: <Baby size={24} />, color: 'bg-orange-500' }
                                 ].map(opt => (
                                     <label key={opt.val} className={`
                                         group relative flex items-center gap-4 p-6 rounded-2xl cursor-pointer transition-all border overflow-hidden
@@ -508,7 +528,7 @@ export default function AdminDashboard() {
                                         </div>
                                         <div>
                                             <strong className={`block text-lg ${selectedPanel === opt.val ? 'text-[#065590]' : 'text-slate-800'}`}>{opt.label}</strong>
-                                            <span className="text-sm text-slate-500">{opt.desc}</span>
+                                            <span className="text-sm text-slate-700">{opt.desc}</span>
                                         </div>
                                         {selectedPanel === opt.val && (
                                             <div className="absolute top-4 right-4 text-[#065590] animate-in zoom-in spin-in-90 duration-300">
@@ -521,7 +541,7 @@ export default function AdminDashboard() {
                             <button
                                 onClick={openPanel}
                                 disabled={!selectedPanel}
-                                className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${selectedPanel ? 'bg-gradient-to-r from-[#065590] to-[#04437a] text-white hover:shadow-xl hover:-translate-y-0.5' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2 ${selectedPanel ? 'bg-gradient-to-r from-[#065590] to-[#04437a] text-white hover:shadow-xl hover:-translate-y-0.5' : 'bg-slate-100 text-slate-800 cursor-not-allowed'}`}
                             >
                                 Open Selected Panel <span className="text-xl">➔</span>
                             </button>
@@ -535,11 +555,11 @@ export default function AdminDashboard() {
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                                     <div>
                                         <h3 className="font-bold text-2xl text-slate-800 tracking-tight">User Management</h3>
-                                        <p className="text-sm text-slate-500 font-medium">Manage clinic staff, roles, and access credentials</p>
+                                        <p className="text-sm text-slate-700 font-medium">Manage clinic staff, roles, and access credentials</p>
                                     </div>
                                     <div className="flex items-center gap-3 w-full md:w-auto">
                                         <div className="relative flex-1 md:w-64">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800" size={18} />
                                             <input
                                                 type="text"
                                                 placeholder="Search users..."
@@ -581,7 +601,7 @@ export default function AdminDashboard() {
                                 <div className="overflow-x-auto -mx-6">
                                     <table className="w-full text-left border-collapse min-w-[800px]">
                                         <thead>
-                                            <tr className="bg-slate-50/80 text-[11px] text-slate-500 uppercase tracking-wider font-bold border-y border-slate-200">
+                                            <tr className="bg-slate-50/80 text-[11px] text-slate-700 uppercase tracking-wider font-bold border-y border-slate-200">
                                                 <th className="py-4 px-6">User Profile</th>
                                                 <th className="py-4 px-4">Contact Details</th>
                                                 <th className="py-4 px-4">Role & Location</th>
@@ -610,15 +630,15 @@ export default function AdminDashboard() {
                                                                         {u.username}
                                                                         {!u.is_active && <span className="text-[9px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border border-red-100">Inactive</span>}
                                                                     </div>
-                                                                    <div className="text-xs text-slate-500 font-medium">{u.salutation} {u.full_name || '-'}</div>
+                                                                    <div className="text-xs text-slate-700 font-medium">{u.salutation} {u.full_name || '-'}</div>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="py-5 px-4 text-sm text-slate-600">
+                                                        <td className="py-5 px-4 text-sm text-slate-800">
                                                             <div className="flex flex-col gap-1.5">
-                                                                {u.email && <span className="flex items-center gap-2 text-xs"><Mail size={13} className="text-slate-400" /> {u.email}</span>}
-                                                                {u.phone_number && <span className="flex items-center gap-2 text-xs"><Phone size={13} className="text-slate-400" /> {u.phone_number}</span>}
-                                                                {!u.email && !u.phone_number && <span className="text-slate-300 italic text-xs">No contact info</span>}
+                                                                {u.email && <span className="flex items-center gap-2 text-xs"><Mail size={13} className="text-slate-800" /> {u.email}</span>}
+                                                                {u.phone_number && <span className="flex items-center gap-2 text-xs"><Phone size={13} className="text-slate-800" /> {u.phone_number}</span>}
+                                                                {!u.email && !u.phone_number && <span className="text-slate-800 italic text-xs">No contact info</span>}
                                                             </div>
                                                         </td>
                                                         <td className="py-5 px-4">
@@ -626,7 +646,7 @@ export default function AdminDashboard() {
                                                                 <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${roleName === 'Admin' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : roleName === 'Doctor' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
                                                                     {roleName}
                                                                 </span>
-                                                                <div className="text-[11px] text-slate-400 font-medium ml-1">
+                                                                <div className="text-[11px] text-slate-800 font-medium ml-1">
                                                                     {roleName === 'Doctor' ? (
                                                                         <>
                                                                             {departments.find(d => d.id === u.department_id)?.name || "No Dept"}
@@ -640,16 +660,16 @@ export default function AdminDashboard() {
                                                         </td>
                                                         <td className="py-5 px-6 text-right">
                                                             <div className="flex justify-end gap-1 opacity-100 xl:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button onClick={() => setResetPasswordUser(u)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors" title="Reset Password">
+                                                                <button onClick={() => setResetPasswordUser(u)} className="p-2.5 text-slate-800 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors" title="Reset Password">
                                                                     <Key size={18} />
                                                                 </button>
-                                                                <button onClick={() => handleToggleActive(u.id, u.is_active)} className={`p-2.5 rounded-xl transition-colors ${u.is_active ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-300 hover:text-emerald-500 hover:bg-emerald-50'}`} title={u.is_active ? "Deactivate" : "Activate"}>
+                                                                <button onClick={() => handleToggleActive(u.id, u.is_active)} className={`p-2.5 rounded-xl transition-colors ${u.is_active ? 'text-emerald-500 hover:bg-emerald-50' : 'text-slate-800 hover:text-emerald-500 hover:bg-emerald-50'}`} title={u.is_active ? "Deactivate" : "Activate"}>
                                                                     {u.is_active ? <CheckCircle2 size={18} /> : <Ban size={18} />}
                                                                 </button>
-                                                                <button onClick={() => setEditingUser(u)} className="p-2.5 text-slate-400 hover:text-[#065590] hover:bg-blue-50 rounded-xl transition-colors" title="Edit">
+                                                                <button onClick={() => setEditingUser(u)} className="p-2.5 text-slate-800 hover:text-[#065590] hover:bg-blue-50 rounded-xl transition-colors" title="Edit">
                                                                     <Edit size={18} />
                                                                 </button>
-                                                                <button onClick={() => setDeleteConfirmUser(u)} className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Delete">
+                                                                <button onClick={() => setDeleteConfirmUser(u)} className="p-2.5 text-slate-800 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors" title="Delete">
                                                                     <Trash2 size={18} />
                                                                 </button>
                                                             </div>
@@ -672,7 +692,7 @@ export default function AdminDashboard() {
                                 <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-white/50 transform animate-in zoom-in-95 duration-200">
                                     <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4"><Key size={24} /></div>
                                     <h3 className="font-bold text-2xl mb-2 text-slate-800">Reset Password</h3>
-                                    <p className="text-slate-500 mb-6 text-sm">Set a new password for <strong className="text-slate-800">{resetPasswordUser.username}</strong>.</p>
+                                    <p className="text-slate-700 mb-6 text-sm">Set a new password for <strong className="text-slate-800">{resetPasswordUser.username}</strong>.</p>
                                     <form onSubmit={handleResetPassword} className="space-y-4">
                                         <input type="password" placeholder="New Password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputClasses} autoFocus required />
                                         <div className="flex gap-3 mt-6">
@@ -688,13 +708,13 @@ export default function AdminDashboard() {
                                 <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-red-500 transform animate-in zoom-in-95 duration-200">
                                     <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4"><AlertTriangle size={24} /></div>
                                     <h3 className="font-bold text-2xl text-slate-800 mb-2">Confirm Delete</h3>
-                                    <p className="text-slate-500 mb-6 font-medium">
+                                    <p className="text-slate-700 mb-6 font-medium">
                                         Are you sure you want to delete <strong className="text-slate-900">{deleteConfirmUser.username}</strong>? This action cannot be undone.
                                     </p>
 
                                     <form onSubmit={handleDeleteUser} className="space-y-4">
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold uppercase text-slate-400">Reason for Deletion</label>
+                                            <label className="text-xs font-bold uppercase text-slate-800">Reason for Deletion</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. Staff resigned, incorrect entry..."
@@ -705,7 +725,7 @@ export default function AdminDashboard() {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-bold uppercase text-slate-400">Confirm with your Admin Password</label>
+                                            <label className="text-xs font-bold uppercase text-slate-800">Confirm with your Admin Password</label>
                                             <input
                                                 type="password"
                                                 placeholder="Enter your password"
@@ -742,7 +762,7 @@ export default function AdminDashboard() {
                                         <h3 className="font-bold text-2xl text-[#065590] flex items-center gap-2">
                                             <span className="p-2 bg-blue-100 rounded-xl text-[#065590]"><UserPlus size={24} /></span> Create New Staff
                                         </h3>
-                                        <button onClick={() => setIsCreateModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"><X size={20} /></button>
+                                        <button onClick={() => setIsCreateModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-800 transition-colors"><X size={20} /></button>
                                     </div>
                                     <form onSubmit={handleCreateUser} className="space-y-4">
                                         <div>
@@ -777,7 +797,7 @@ export default function AdminDashboard() {
                                                 <label className={labelClasses}>Password</label>
                                                 <div className="relative">
                                                     <input type={showPassword ? 'text' : 'password'} value={newUser.password} onChange={e => setNewUser({ ...newUser, password: e.target.value })} className={`${inputClasses} pr-10`} required />
-                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-800">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -827,7 +847,7 @@ export default function AdminDashboard() {
                                         <h3 className="font-bold text-2xl text-slate-800 flex items-center gap-2">
                                             <span className="p-2 bg-blue-100 rounded-xl text-[#065590]"><Edit size={24} /></span> Edit User
                                         </h3>
-                                        <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"><X size={20} /></button>
+                                        <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-800 transition-colors"><X size={20} /></button>
                                     </div>
                                     <form onSubmit={handleUpdateUser} className="space-y-4">
                                         <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-4 mb-4">
@@ -835,7 +855,7 @@ export default function AdminDashboard() {
                                                 {(editingUser.username || 'U')[0].toUpperCase()}
                                             </div>
                                             <div>
-                                                <div className="text-xs font-bold uppercase text-slate-400">Account Username</div>
+                                                <div className="text-xs font-bold uppercase text-slate-800">Account Username</div>
                                                 <div className="font-bold text-slate-800">{editingUser.username}</div>
                                             </div>
                                         </div>
@@ -895,7 +915,7 @@ export default function AdminDashboard() {
                                         <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-between">
                                             <div>
                                                 <div className="font-bold text-slate-800">Account Status</div>
-                                                <div className="text-xs text-slate-500 font-medium">{editingUser.is_active ? 'Active and can access portal' : 'Account is currently disabled'}</div>
+                                                <div className="text-xs text-slate-700 font-medium">{editingUser.is_active ? 'Active and can access portal' : 'Account is currently disabled'}</div>
                                             </div>
                                             <div className={`w-12 h-7 rounded-full p-1 cursor-pointer transition-colors ${editingUser.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} onClick={() => setEditingUser({ ...editingUser, is_active: !editingUser.is_active })}>
                                                 <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${editingUser.is_active ? 'translate-x-5' : ''}`} />
@@ -923,8 +943,8 @@ export default function AdminDashboard() {
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50/80 sticky top-0 backdrop-blur-sm">
                                             <tr>
-                                                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Department Name</th>
-                                                <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Settings</th>
+                                                <th className="p-4 text-xs font-bold text-slate-700 uppercase">Department Name</th>
+                                                <th className="p-4 text-xs font-bold text-slate-700 uppercase text-right">Settings</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -935,7 +955,7 @@ export default function AdminDashboard() {
                                                         {d.name}
                                                     </td>
                                                     <td className="p-4 text-right">
-                                                        <span className="text-xs bg-slate-100 px-2 py-1 rounded-full text-slate-500 font-bold border border-slate-200">
+                                                        <span className="text-xs bg-slate-100 px-2 py-1 rounded-full text-slate-700 font-bold border border-slate-200">
                                                             ID: {d.id}
                                                         </span>
                                                     </td>
@@ -973,10 +993,10 @@ export default function AdminDashboard() {
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10">
                                             <tr>
-                                                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Room</th>
-                                                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Assigned Dept.</th>
-                                                <th className="p-4 text-xs font-bold text-slate-500 uppercase">Floor</th>
-                                                <th className="p-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
+                                                <th className="p-4 text-xs font-bold text-slate-700 uppercase">Room</th>
+                                                <th className="p-4 text-xs font-bold text-slate-700 uppercase">Assigned Dept.</th>
+                                                <th className="p-4 text-xs font-bold text-slate-700 uppercase">Floor</th>
+                                                <th className="p-4 text-xs font-bold text-slate-700 uppercase text-right">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
@@ -997,7 +1017,7 @@ export default function AdminDashboard() {
                                                                 </select>
                                                                 <div className="flex gap-2 items-center">
                                                                     <button onClick={handleUpdateRoom} className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg transition-colors"><Save size={18} /></button>
-                                                                    <button onClick={() => setEditingRoom(null)} className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors"><LogOut size={18} className="rotate-180" /></button>
+                                                                    <button onClick={() => setEditingRoom(null)} className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg transition-colors"><LogOut size={18} className="rotate-180" /></button>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -1010,17 +1030,17 @@ export default function AdminDashboard() {
                                                                         {departments.find(d => d.id === r.department_id).name}
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="text-xs text-slate-400 italic">Unassigned</span>
+                                                                    <span className="text-xs text-slate-800 italic">Unassigned</span>
                                                                 )}
                                                             </td>
                                                             <td className="p-4">
                                                                 {r.floor === 'ground' ? <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold border border-purple-200">Ground Floor</span>
                                                                     : r.floor === 'first' ? <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold border border-indigo-200">First Floor</span>
                                                                         : r.floor === 'pediatrics' ? <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded font-bold border border-orange-200">Pediatrics</span>
-                                                                            : <span className="text-xs text-slate-400 italic">None</span>}
+                                                                            : <span className="text-xs text-slate-800 italic">None</span>}
                                                             </td>
                                                             <td className="p-4 text-right">
-                                                                <button onClick={() => setEditingRoom(r)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                                                                <button onClick={() => setEditingRoom(r)} className="p-2 text-slate-800 hover:text-blue-600 hover:bg-blue-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
                                                                     <Edit size={16} />
                                                                 </button>
                                                             </td>
@@ -1043,28 +1063,28 @@ export default function AdminDashboard() {
                                     <div className="bg-orange-100 text-orange-600 p-4 rounded-2xl"><Hourglass size={24} /></div>
                                     <div>
                                         <div className="text-3xl font-bold text-slate-800">{stats?.queue?.waiting || 0}</div>
-                                        <div className="text-xs font-bold uppercase text-slate-500 tracking-wide">Waiting Now</div>
+                                        <div className="text-xs font-bold uppercase text-slate-700 tracking-wide">Waiting Now</div>
                                     </div>
                                 </div>
                                 <div className={`${cardClasses} flex items-center gap-4 !p-6`}>
                                     <div className="bg-blue-100 text-blue-600 p-4 rounded-2xl"><Volume2 size={24} /></div>
                                     <div>
                                         <div className="text-3xl font-bold text-slate-800">{stats?.queue?.calling || 0}</div>
-                                        <div className="text-xs font-bold uppercase text-slate-500 tracking-wide">Active Calls</div>
+                                        <div className="text-xs font-bold uppercase text-slate-700 tracking-wide">Active Calls</div>
                                     </div>
                                 </div>
                                 <div className={`${cardClasses} flex items-center gap-4 !p-6`}>
                                     <div className="bg-emerald-100 text-emerald-600 p-4 rounded-2xl"><Flag size={24} /></div>
                                     <div>
                                         <div className="text-3xl font-bold text-slate-800">{stats?.history_count_today || '0'}</div>
-                                        <div className="text-xs font-bold uppercase text-slate-500 tracking-wide">Completed Today</div>
+                                        <div className="text-xs font-bold uppercase text-slate-700 tracking-wide">Completed Today</div>
                                     </div>
                                 </div>
                                 <div className={`${cardClasses} flex items-center gap-4 !p-6`}>
                                     <div className="bg-purple-100 text-purple-600 p-4 rounded-2xl"><Stethoscope size={24} /></div>
                                     <div>
                                         <div className="text-3xl font-bold text-slate-800">{users.filter(u => u.role_id === 2 && u.is_active).length}</div>
-                                        <div className="text-xs font-bold uppercase text-slate-500 tracking-wide">Active Doctors</div>
+                                        <div className="text-xs font-bold uppercase text-slate-700 tracking-wide">Active Doctors</div>
                                     </div>
                                 </div>
                             </div>
@@ -1083,7 +1103,7 @@ export default function AdminDashboard() {
                                 <div className={`${cardClasses} border-red-100 relative overflow-hidden`}>
                                     <div className="absolute top-0 right-0 p-32 bg-red-50 rounded-full blur-3xl opacity-50 pointer-events-none -mr-16 -mt-16"></div>
                                     <h3 className="text-red-700 font-bold text-xl mb-2 relative z-10 flex items-center gap-2"><AlertTriangle size={24} /> Danger Zone</h3>
-                                    <p className="text-slate-500 mb-8 text-sm relative z-10">Administrative actions that affect live data. Proceed with caution.</p>
+                                    <p className="text-slate-700 mb-8 text-sm relative z-10">Administrative actions that affect live data. Proceed with caution.</p>
 
                                     <div className="space-y-4 relative z-10">
                                         <button onClick={async () => {
@@ -1112,222 +1132,290 @@ export default function AdminDashboard() {
                     )}
 
                     {activeTab === 'reports' && (
-                        <div className="space-y-6">
-                            {/* Reports Dashboard */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <button
-                                    onClick={() => { setFilterStatus(''); setFilterDept(''); setFilterStartDate(''); setFilterEndDate(''); setSearchTerm(''); }}
-                                    className={`${cardClasses} p-6 border-l-4 border-l-indigo-500 text-left transition-all hover:translate-y-[-2px] hover:shadow-xl hover:shadow-indigo-500/10 group active:scale-95`}
-                                >
-                                    <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-indigo-600 transition-colors">Total Visits</div>
-                                    <div className="text-3xl font-black text-slate-800">{reportSummary?.total || 0}</div>
-                                    <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 font-bold uppercase tracking-tight">
-                                        <Activity size={12} className="text-indigo-400" /> View All Records
-                                    </div>
-                                </button>
+                        <div className="space-y-0">
 
-                                <button
-                                    onClick={() => setFilterStatus('completed')}
-                                    className={`${cardClasses} p-6 border-l-4 border-l-emerald-500 text-left transition-all hover:translate-y-[-2px] hover:shadow-xl hover:shadow-emerald-500/10 group active:scale-95`}
-                                >
-                                    <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-emerald-600 transition-colors">Completion Rate</div>
-                                    <div className="text-3xl font-black text-slate-800">
-                                        {reportSummary ? Math.round((reportSummary.completed / reportSummary.total) * 100) || 0 : 0}%
+                            {/* ── Page masthead ── */}
+                            <div className="mb-8">
+                                <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-600/20">
+                                                <BarChart3 size={22} />
+                                            </div>
+                                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Reports &amp; Analytics</h2>
+                                        </div>
+                                        <p className="text-sm text-slate-800 font-medium ml-14">Patient visit history, clinic KPIs, and intelligent roster analysis.</p>
                                     </div>
-                                    <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 font-bold uppercase tracking-tight">
-                                        <CheckCircle2 size={12} className="text-emerald-500" /> {reportSummary?.completed || 0} Successful
-                                    </div>
-                                </button>
 
-                                <button
-                                    onClick={() => setFilterStatus('waiting')}
-                                    className={`${cardClasses} p-6 border-l-4 border-l-amber-500 text-left transition-all hover:translate-y-[-2px] hover:shadow-xl hover:shadow-amber-500/10 group active:scale-95`}
-                                >
-                                    <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-amber-600 transition-colors">Avg Wait Time</div>
-                                    <div className="text-3xl font-black text-slate-800">{reportSummary?.avg_wait_time || 0}<span className="text-lg font-bold ml-1 text-slate-400">m</span></div>
-                                    <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 font-bold uppercase tracking-tight">
-                                        <Hourglass size={12} className="text-amber-500" /> Wait Metrics
-                                    </div>
-                                </button>
-
-                                <button
-                                    onClick={() => setFilterStatus('in-consultation')}
-                                    className={`${cardClasses} p-6 border-l-4 border-l-blue-500 text-left transition-all hover:translate-y-[-2px] hover:shadow-xl hover:shadow-blue-500/10 group active:scale-95`}
-                                >
-                                    <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-blue-600 transition-colors">Avg Service Time</div>
-                                    <div className="text-3xl font-black text-slate-800">{reportSummary?.avg_service_time || 0}<span className="text-lg font-bold ml-1 text-slate-400">m</span></div>
-                                    <div className="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5 font-bold uppercase tracking-tight">
-                                        <Stethoscope size={12} className="text-blue-500" /> Service Speed
-                                    </div>
-                                </button>
-                            </div>
-
-                            <div className={cardClasses}>
-                                <div className="flex flex-col gap-6">
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <h3 className="font-black text-2xl text-slate-800 flex items-center gap-3">
-                                            <span className="p-2.5 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-600/20"><BarChart3 size={24} /></span>
-                                            Global Patient History
-                                        </h3>
+                                    {/* Sub-tab switcher */}
+                                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start shrink-0">
                                         <button
-                                            onClick={handleExportDOCX}
-                                            className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg transition-all active:scale-95"
+                                            onClick={() => setReportActiveTab('history')}
+                                            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${reportActiveTab === 'history'
+                                                ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100'
+                                                : 'text-slate-700 hover:text-slate-700'
+                                                }`}
                                         >
-                                            <FileText size={18} /> Export as .docx
+                                            <History size={15} /> Patient History
                                         </button>
-                                    </div>
-
-                                    {/* Advanced Filters */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Search size={16} /></span>
-                                            <input type="text" placeholder="Search tokens/names..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${inputClasses} py-2 !pl-9 shadow-sm border-white`} />
-                                        </div>
-                                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`${inputClasses} py-2 shadow-sm border-white`}>
-                                            <option value="">All Statuses</option>
-                                            <option value="completed">✅ Completed</option>
-                                            <option value="no-show">👻 No-Show</option>
-                                            <option value="expired">⏳ Expired</option>
-                                        </select>
-                                        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className={`${inputClasses} py-2 shadow-sm border-white`}>
-                                            <option value="">All Departments</option>
-                                            {departments
-                                                .filter(d => ![
-                                                    'Admin', 'Administration', 'Finance', 'HR', 'Human Resources',
-                                                    'Call center', 'Customer Care', 'Marketing', 'Stock',
-                                                    'Archive', 'Auditor', 'Operations', 'Team Leader',
-                                                    'Internal Auditor', 'Finance', 'Stock'
-                                                ].some(keyword => d.name.toLowerCase().includes(keyword.toLowerCase())))
-                                                .map(d => <option key={d.id} value={d.id}>{d.name}</option>)
-                                            }
-                                        </select>
-                                        <div className="flex items-center gap-2 lg:col-span-2 bg-white px-3 py-1 rounded-xl border border-white shadow-sm">
-                                            <Calendar size={16} className="text-slate-400 shrink-0" />
-                                            <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full bg-transparent border-none focus:ring-0 text-sm py-1" />
-                                            <span className="text-slate-300">→</span>
-                                            <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-full bg-transparent border-none focus:ring-0 text-sm py-1" />
-                                        </div>
-                                    </div>
-
-                                    {/* Purge Control */}
-                                    <div className="bg-red-50/50 border border-red-100 rounded-2xl p-4 flex flex-wrap items-center gap-4">
-                                        <div className="flex items-center gap-2 text-red-800 font-bold text-[10px] uppercase tracking-widest bg-white px-3 py-1.5 rounded-lg border border-red-100">
-                                            <Trash2 size={14} /> Data Retention
-                                        </div>
-                                        <p className="text-xs text-red-600/70 font-medium max-w-sm">Use the dates above to select a range, then click purge to permanently delete historical records.</p>
-                                        <button onClick={() => {
-                                            if (!filterStartDate || !filterEndDate) return alert("Please select a date range using the filters above first.");
-                                            setIsHistoryPurgeModalOpen(true);
-                                        }} className="ml-auto bg-white hover:bg-red-600 hover:text-white text-red-600 border border-red-200 px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all hover:shadow-red-200/50">
-                                            Purge Selected Range
+                                        <button
+                                            onClick={() => setReportActiveTab('ai')}
+                                            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl transition-all ${reportActiveTab === 'ai'
+                                                ? 'bg-white text-violet-700 shadow-sm border border-violet-200'
+                                                : 'text-slate-700 hover:text-slate-700'
+                                                }`}
+                                        >
+                                            <Sparkles size={15} /> Intelligent Roster Reports
                                         </button>
-                                    </div>
-
-                                    <div className="overflow-x-auto rounded-3xl border border-slate-100 bg-white shadow-xl shadow-slate-200/20 overflow-hidden">
-                                        <table className="w-full text-left border-collapse">
-                                            <thead>
-                                                <tr className="bg-slate-800 text-[10px] font-black text-slate-200 uppercase tracking-widest border-b border-slate-700">
-                                                    <th className="p-5">Token</th>
-                                                    <th className="p-5">Patient Details</th>
-                                                    <th className="p-5">Process Status</th>
-                                                    <th className="p-5">Created</th>
-                                                    <th className="p-5 text-amber-300">Wait Duration</th>
-                                                    <th className="p-5 text-sky-300">Service Duration</th>
-                                                    <th className="p-5">Attending Staff</th>
-                                                    <th className="p-5 text-right">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50 text-sm font-medium text-slate-600">
-                                                {history.filter(h =>
-                                                    (h.patient_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                                                    (h.token_number?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-                                                ).map(h => {
-                                                    // Calculate Wait Time
-                                                    let waitDisp = '-';
-                                                    if (h.created_at && h.called_at) {
-                                                        const start = new Date(h.created_at + (h.created_at.endsWith('Z') ? '' : 'Z'));
-                                                        const end = new Date(h.called_at + (h.called_at.endsWith('Z') ? '' : 'Z'));
-                                                        const mins = Math.floor((end - start) / 60000);
-                                                        waitDisp = `${mins}m`;
-                                                    }
-
-                                                    // Calculate Service Time
-                                                    let servDisp = '-';
-                                                    if (h.called_at && h.completed_at) {
-                                                        const start = new Date(h.called_at + (h.called_at.endsWith('Z') ? '' : 'Z'));
-                                                        const end = new Date(h.completed_at + (h.completed_at.endsWith('Z') ? '' : 'Z'));
-                                                        const mins = Math.floor((end - start) / 60000);
-                                                        const secs = Math.floor(((end - start) % 60000) / 1000);
-                                                        servDisp = `${mins}m ${secs}s`;
-                                                    }
-
-                                                    return (
-                                                        <tr key={h.id}
-                                                            onClick={() => setSelectedPatientModal(h)}
-                                                            className="group cursor-pointer hover:bg-indigo-50/50 even:bg-slate-50/30 transition-all duration-200">
-                                                            <td className="p-4">
-                                                                <div className="font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg inline-block text-xs border border-indigo-100">{h.token_number}</div>
-                                                            </td>
-                                                            <td className="p-4">
-                                                                <div className="font-bold text-slate-800">{h.patient_name}</div>
-                                                                <div className="text-[10px] text-slate-400 font-bold uppercase">{h.visit_type || 'General'}</div>
-                                                            </td>
-                                                            <td className="p-4">
-                                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider
-                                                                    ${h.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
-                                                                        h.status === 'no-show' ? 'bg-slate-100 text-slate-700' :
-                                                                            h.status === 'calling' ? 'bg-indigo-100 text-indigo-700' :
-                                                                                'bg-amber-100 text-amber-700'}`}>
-                                                                    {h.status}
-                                                                </span>
-                                                            </td>
-                                                            <td className="p-4">
-                                                                <div className="text-slate-700 font-bold">{h.created_at ? new Date(h.created_at + (h.created_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                                                                <div className="text-[10px] text-slate-400 font-medium">{h.created_at ? new Date(h.created_at + (h.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString() : ''}</div>
-                                                            </td>
-                                                            <td className="p-4">
-                                                                <div className={`font-black text-xs ${parseInt(waitDisp) > 15 ? 'text-amber-600' : 'text-slate-500'}`}>{waitDisp}</div>
-                                                            </td>
-                                                            <td className="p-4">
-                                                                <div className="font-black text-xs text-indigo-500">{servDisp}</div>
-                                                            </td>
-                                                            <td className="p-4">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 uppercase">{(h.doctor_name || 'U')[0]}</div>
-                                                                    <div className="text-xs font-bold text-slate-700 truncate max-w-[120px]">{h.doctor_name || '-'}</div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="p-4 text-right">
-                                                                <button onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (confirm('Delete this historical record permanently?')) {
-                                                                        fetch(`${API_URL}/history/${h.id}`, { method: 'DELETE', headers: authHeader }).then(() => {
-                                                                            fetchHistory();
-                                                                            fetchReportSummary();
-                                                                        })
-                                                                    }
-                                                                }} className="text-slate-300 hover:text-red-600 p-2 transition-colors">
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                                {history.length === 0 && (
-                                                    <tr>
-                                                        <td colSpan="8" className="p-16 text-center">
-                                                            <div className="text-slate-300 mb-2 font-black text-4xl">📭</div>
-                                                            <div className="text-slate-400 font-bold">No records matching your filters.</div>
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
                                     </div>
                                 </div>
+
+                                {/* Divider */}
+                                <div className="mt-6 border-t border-slate-100" />
                             </div>
+
+                            {/* ── Patient History sub-tab ── */}
+                            {reportActiveTab === 'history' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+                                    {/* KPI strip */}
+                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {[
+                                            {
+                                                label: 'Total Visits', sub: 'All records',
+                                                value: reportSummary?.total || 0,
+                                                accent: 'border-indigo-500', iconBg: 'bg-indigo-50', iconColor: 'text-indigo-500',
+                                                icon: <Activity size={18} />,
+                                                onClick: () => { setFilterStatus(''); setFilterDept(''); setFilterStartDate(''); setFilterEndDate(''); setSearchTerm(''); }
+                                            },
+                                            {
+                                                label: 'Completion Rate', sub: `${reportSummary?.completed || 0} successful`,
+                                                value: reportSummary ? `${Math.round((reportSummary.completed / reportSummary.total) * 100) || 0}%` : '0%',
+                                                accent: 'border-emerald-500', iconBg: 'bg-emerald-50', iconColor: 'text-emerald-500',
+                                                icon: <CheckCircle2 size={18} />,
+                                                onClick: () => setFilterStatus('completed')
+                                            },
+                                            {
+                                                label: 'Avg Wait Time', sub: 'Wait metrics',
+                                                value: `${reportSummary?.avg_wait_time || 0}m`,
+                                                accent: 'border-amber-500', iconBg: 'bg-amber-50', iconColor: 'text-amber-500',
+                                                icon: <Hourglass size={18} />,
+                                                onClick: () => setFilterStatus('waiting')
+                                            },
+                                            {
+                                                label: 'Avg Service Time', sub: 'Service speed',
+                                                value: `${reportSummary?.avg_service_time || 0}m`,
+                                                accent: 'border-blue-500', iconBg: 'bg-blue-50', iconColor: 'text-blue-500',
+                                                icon: <Stethoscope size={18} />,
+                                                onClick: () => setFilterStatus('in-consultation')
+                                            },
+                                        ].map(({ label, sub, value, accent, iconBg, iconColor, icon, onClick }) => (
+                                            <button
+                                                key={label}
+                                                onClick={onClick}
+                                                className={`${cardClasses} p-5 border-l-4 ${accent} text-left group hover:-translate-y-0.5 hover:shadow-xl transition-all active:scale-95`}
+                                            >
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className={`p-2 ${iconBg} rounded-lg ${iconColor}`}>{icon}</div>
+                                                    <ChevronRight size={14} className="text-slate-800 group-hover:text-slate-700 transition-colors mt-1" />
+                                                </div>
+                                                <div className="text-3xl font-black text-slate-800 mb-0.5">{value}</div>
+                                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-800">{label}</div>
+                                                <div className="text-[10px] text-slate-800 font-medium mt-0.5">{sub}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Main record card */}
+                                    <div className={cardClasses}>
+                                        <div className="flex flex-col gap-5">
+
+                                            {/* Card header */}
+                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2.5 bg-indigo-600 rounded-xl text-white shadow shadow-indigo-300">
+                                                        <History size={18} />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-black text-slate-800 text-lg leading-tight">Global Patient History</h3>
+                                                        <p className="text-xs text-slate-800 font-medium">Full visit log across all departments</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={handleExportDOCX}
+                                                    className="flex items-center gap-2 bg-indigo-700 hover:bg-indigo-800 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 transition-all active:scale-95 shrink-0"
+                                                >
+                                                    <FileText size={16} /> Export .docx
+                                                </button>
+                                            </div>
+
+                                            {/* Filter bar */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-slate-50/80 rounded-2xl border border-slate-100">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 pointer-events-none"><Search size={15} /></span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search names or tokens…"
+                                                        value={searchTerm}
+                                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                                        className={`${inputClasses} py-2 !pl-9 border-white shadow-sm`}
+                                                    />
+                                                </div>
+
+                                                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`${inputClasses} py-2 border-white shadow-sm`}>
+                                                    <option value="">All Statuses</option>
+                                                    <option value="completed">Completed</option>
+                                                    <option value="no-show">No-Show</option>
+                                                    <option value="expired">Expired</option>
+                                                </select>
+
+                                                <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} className={`${inputClasses} py-2 border-white shadow-sm`}>
+                                                    <option value="">All Departments</option>
+                                                    {departments
+                                                        .filter(d => !['Admin', 'Administration', 'Finance', 'HR', 'Human Resources', 'Call center', 'Customer Care', 'Marketing', 'Stock', 'Archive', 'Auditor', 'Operations', 'Team Leader', 'Internal Auditor'].some(k => d.name.toLowerCase().includes(k.toLowerCase())))
+                                                        .map(d => <option key={d.id} value={d.id}>{d.name}</option>)
+                                                    }
+                                                </select>
+
+                                                <div className="lg:col-span-2 flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-white shadow-sm">
+                                                    <Calendar size={15} className="text-slate-800 shrink-0" />
+                                                    <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full bg-transparent border-none focus:ring-0 text-sm" />
+                                                    <span className="text-slate-800 font-bold shrink-0">—</span>
+                                                    <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-full bg-transparent border-none focus:ring-0 text-sm" />
+                                                </div>
+                                            </div>
+
+                                            {/* Data retention bar */}
+                                            <div className="flex flex-wrap items-center gap-3 p-4 bg-red-50/60 border border-red-100 rounded-xl">
+                                                <div className="flex items-center gap-1.5 text-red-700 font-black text-[10px] uppercase tracking-widest bg-white px-3 py-1.5 rounded-lg border border-red-100 shrink-0">
+                                                    <Trash2 size={13} /> Data Retention
+                                                </div>
+                                                <p className="text-xs text-red-500/80 font-medium flex-1 min-w-0">Select a date range above, then purge to permanently remove those records.</p>
+                                                <button
+                                                    onClick={() => {
+                                                        if (!filterStartDate || !filterEndDate) return alert('Please select a date range using the filters above first.');
+                                                        setIsHistoryPurgeModalOpen(true);
+                                                    }}
+                                                    className="ml-auto bg-white hover:bg-red-600 hover:text-white text-red-600 border border-red-200 px-5 py-2 rounded-xl font-bold text-xs shadow-sm transition-all shrink-0"
+                                                >
+                                                    Purge Range
+                                                </button>
+                                            </div>
+
+                                            {/* Table */}
+                                            <div className="overflow-x-auto rounded-2xl border border-slate-100 shadow-lg shadow-slate-200/30 overflow-hidden">
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-slate-800 text-[10px] font-black text-slate-800 uppercase tracking-widest">
+                                                            <th className="px-5 py-4">Token</th>
+                                                            <th className="px-5 py-4">Patient</th>
+                                                            <th className="px-5 py-4">Status</th>
+                                                            <th className="px-5 py-4">Date &amp; Time</th>
+                                                            <th className="px-5 py-4 text-amber-300">Wait</th>
+                                                            <th className="px-5 py-4 text-sky-300">Service</th>
+                                                            <th className="px-5 py-4">Staff</th>
+                                                            <th className="px-5 py-4 text-right">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-50 text-sm text-slate-800">
+                                                        {history.filter(h =>
+                                                            (h.patient_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                                                            (h.token_number?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+                                                        ).map(h => {
+                                                            let waitDisp = '—';
+                                                            if (h.created_at && h.called_at) {
+                                                                const diff = Math.floor((new Date(h.called_at + (h.called_at.endsWith('Z') ? '' : 'Z')) - new Date(h.created_at + (h.created_at.endsWith('Z') ? '' : 'Z'))) / 60000);
+                                                                waitDisp = `${diff}m`;
+                                                            }
+                                                            let servDisp = '—';
+                                                            if (h.called_at && h.completed_at) {
+                                                                const ms = new Date(h.completed_at + (h.completed_at.endsWith('Z') ? '' : 'Z')) - new Date(h.called_at + (h.called_at.endsWith('Z') ? '' : 'Z'));
+                                                                servDisp = `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+                                                            }
+                                                            const statusMap = {
+                                                                completed: 'bg-emerald-100 text-emerald-700',
+                                                                'no-show': 'bg-slate-100 text-slate-800',
+                                                                calling: 'bg-indigo-100 text-indigo-700',
+                                                            };
+                                                            const statusCls = statusMap[h.status] || 'bg-amber-100 text-amber-700';
+                                                            return (
+                                                                <tr
+                                                                    key={h.id}
+                                                                    onClick={() => setSelectedPatientModal(h)}
+                                                                    className="cursor-pointer hover:bg-indigo-50/40 even:bg-slate-50/20 transition-colors duration-150"
+                                                                >
+                                                                    <td className="px-5 py-3.5">
+                                                                        <span className="font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg text-xs border border-indigo-100">{h.token_number}</span>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <div className="font-bold text-slate-800 text-sm">{h.patient_name}</div>
+                                                                        <div className="text-[10px] text-slate-800 font-bold uppercase tracking-wide">{h.visit_type || 'General'}</div>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${statusCls}`}>{h.status}</span>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <div className="font-bold text-slate-700 text-sm">{h.created_at ? new Date(h.created_at + (h.created_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                                                                        <div className="text-[10px] text-slate-800">{h.created_at ? new Date(h.created_at + (h.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString() : ''}</div>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <span className={`font-black text-xs ${parseInt(waitDisp) > 15 ? 'text-amber-600' : 'text-slate-700'}`}>{waitDisp}</span>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <span className="font-black text-xs text-indigo-500">{servDisp}</span>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-black text-slate-700 uppercase">{(h.doctor_name || 'U')[0]}</div>
+                                                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{h.doctor_name || '—'}</span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-5 py-3.5 text-right">
+                                                                        <button
+                                                                            onClick={e => {
+                                                                                e.stopPropagation();
+                                                                                if (confirm('Delete this record permanently?')) {
+                                                                                    fetch(`${API_URL}/history/${h.id}`, { method: 'DELETE', headers: authHeader }).then(() => { fetchHistory(); fetchReportSummary(); });
+                                                                                }
+                                                                            }}
+                                                                            className="text-slate-800 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                                                        >
+                                                                            <Trash2 size={15} />
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                        {history.length === 0 && (
+                                                            <tr>
+                                                                <td colSpan="8" className="py-20 text-center">
+                                                                    <div className="inline-flex p-4 bg-slate-100 rounded-2xl mb-4">
+                                                                        <History size={32} className="text-slate-800" />
+                                                                    </div>
+                                                                    <p className="font-bold text-slate-800">No records match your filters.</p>
+                                                                    <p className="text-xs text-slate-800 mt-1">Try adjusting the search or date range.</p>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Intelligent Roster Reports sub-tab ── */}
+                            {reportActiveTab === 'ai' && (
+                                <AdminAIReportTab authHeader={authHeader}
+                                    aiPeriod={aiPeriod} setAiPeriod={setAiPeriod}
+                                    aiReport={aiReport} setAiReport={setAiReport}
+                                    aiLoading={aiLoading} setAiLoading={setAiLoading}
+                                    aiError={aiError} setAiError={setAiError} />
+                            )}
                         </div>
                     )}
+
 
                     {activeTab === 'duty_roster' && (
                         <div className="max-w-7xl mx-auto">
@@ -1342,7 +1430,7 @@ export default function AdminDashboard() {
                                     <div className="p-3 bg-blue-50 text-[#065590] rounded-xl"><Settings size={24} /></div>
                                     <div>
                                         <h2 className="text-2xl font-black text-slate-800 tracking-tight">System Settings</h2>
-                                        <p className="text-sm text-slate-500 font-medium mt-1">Configure global display and application parameters.</p>
+                                        <p className="text-sm text-slate-700 font-medium mt-1">Configure global display and application parameters.</p>
                                     </div>
                                 </div>
 
@@ -1351,7 +1439,7 @@ export default function AdminDashboard() {
                                         <label className={labelClasses}>
                                             Display Screen Marquee Messages
                                         </label>
-                                        <p className="text-xs text-slate-500 mb-3 ml-1 font-medium">
+                                        <p className="text-xs text-slate-700 mb-3 ml-1 font-medium">
                                             These messages will scroll continuously at the bottom of the TV displays. Enter each message on a <strong className="text-slate-800">new line</strong>.
                                         </p>
                                         <textarea
@@ -1381,190 +1469,492 @@ export default function AdminDashboard() {
             </div>
 
             {/* Patient Details Modal */}
-            {selectedPatientModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="bg-gradient-to-r from-[#065590] to-[#04437a] p-6 relative">
-                            <button
-                                onClick={() => setSelectedPatientModal(null)}
-                                className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
-                            >
-                                <X size={20} />
-                            </button>
-                            <h2 className="text-white text-2xl font-black tracking-tight">{selectedPatientModal.token_number}</h2>
-                            <p className="text-blue-100 font-medium mt-1">{selectedPatientModal.patient_name || 'Walk-in Patient'}</p>
+            {
+                selectedPatientModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="bg-gradient-to-r from-[#065590] to-[#04437a] p-6 relative">
+                                <button
+                                    onClick={() => setSelectedPatientModal(null)}
+                                    className="absolute top-4 right-4 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                                <h2 className="text-white text-2xl font-black tracking-tight">{selectedPatientModal.token_number}</h2>
+                                <p className="text-blue-100 font-medium mt-1">{selectedPatientModal.patient_name || 'Walk-in Patient'}</p>
 
-                            <div className="mt-4 inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-white text-sm font-semibold border border-white/10">
-                                <Activity size={14} />
-                                {selectedPatientModal.status.toUpperCase()}
-                            </div>
-                        </div>
-
-                        <div className="p-6">
-                            {/* Journey Timeline */}
-                            <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-200 before:via-slate-200 before:to-transparent">
-
-                                {/* 1. Registration */}
-                                <div className="relative flex items-center justify-between gap-4 group">
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-200 z-10 shrink-0 ring-4 ring-white">
-                                            <UserPlus size={18} />
-                                        </div>
-                                        <div>
-                                            <div className="text-[10px] font-black uppercase text-indigo-500 tracking-widest leading-none mb-1">Registered</div>
-                                            <div className="text-sm font-bold text-slate-800">Arrival & Token Issued</div>
-                                            <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                                                <UserCircle size={10} /> Received by: <span className="text-slate-700 font-bold">{selectedPatientModal.registrar_name || 'System / Kiosk'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-xs font-black text-slate-800">{new Date(selectedPatientModal.created_at + (selectedPatientModal.created_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                                        <div className="text-[10px] text-slate-400 font-bold uppercase">{new Date(selectedPatientModal.created_at + (selectedPatientModal.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
-                                    </div>
+                                <div className="mt-4 inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-white text-sm font-semibold border border-white/10">
+                                    <Activity size={14} />
+                                    {selectedPatientModal.status.toUpperCase()}
                                 </div>
+                            </div>
 
-                                {/* 2. In Queue */}
-                                {selectedPatientModal.called_at && (
+                            <div className="p-6">
+                                {/* Journey Timeline */}
+                                <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-200 before:via-slate-200 before:to-transparent">
+
+                                    {/* 1. Registration */}
                                     <div className="relative flex items-center justify-between gap-4 group">
                                         <div className="flex items-center gap-4">
-                                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-500 text-white shadow-lg shadow-amber-200 z-10 shrink-0 ring-4 ring-white">
-                                                <Hourglass size={18} />
+                                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-200 z-10 shrink-0 ring-4 ring-white">
+                                                <UserPlus size={18} />
                                             </div>
                                             <div>
-                                                <div className="text-[10px] font-black uppercase text-amber-600 tracking-widest leading-none mb-1">Queueing</div>
-                                                <div className="text-sm font-bold text-slate-800">Time Spent in Waiting Area</div>
-                                                <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                                                    <Clock3 size={10} /> Duration: <span className="text-amber-700 font-black">
-                                                        {Math.floor((new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z')) - new Date(selectedPatientModal.created_at + (selectedPatientModal.created_at.endsWith('Z') ? '' : 'Z'))) / 60000)} mins
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* 3. Called / With Staff */}
-                                {selectedPatientModal.called_at && (
-                                    <div className="relative flex items-center justify-between gap-4 group">
-                                        <div className="flex items-center gap-4">
-                                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-200 z-10 shrink-0 ring-4 ring-white">
-                                                <Stethoscope size={18} />
-                                            </div>
-                                            <div>
-                                                <div className="text-[10px] font-black uppercase text-blue-500 tracking-widest leading-none mb-1">Consultation</div>
-                                                <div className="text-sm font-bold text-slate-800">Medical Service Initiated</div>
-                                                <div className="flex flex-col gap-1 mt-1">
-                                                    <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                                                        <MapPin size={10} /> Room: <span className="text-slate-700 font-bold">{selectedPatientModal.room_number || 'N/A'}</span>
-                                                    </div>
-                                                    <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                                                        <UserCircle size={10} /> Staff: <span className="text-slate-700 font-bold">{selectedPatientModal.doctor_name || 'N/A'}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right self-start mt-2">
-                                            <div className="text-xs font-black text-slate-800">{new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* 4. End of Service */}
-                                {selectedPatientModal.completed_at && (
-                                    <div className="relative flex items-center justify-between gap-4 group">
-                                        <div className="flex items-center gap-4">
-                                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-200 z-10 shrink-0 ring-4 ring-white">
-                                                <CheckCircle2 size={18} />
-                                            </div>
-                                            <div>
-                                                <div className="text-[10px] font-black uppercase text-emerald-600 tracking-widest leading-none mb-1">Completed</div>
-                                                <div className="text-sm font-bold text-emerald-800">Session Closed</div>
-                                                <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                                                    <Activity size={10} /> Total Service Time: <span className="text-emerald-700 font-black">
-                                                        {Math.floor((new Date(selectedPatientModal.completed_at + (selectedPatientModal.completed_at.endsWith('Z') ? '' : 'Z')) - new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z'))) / 60000)}m {Math.floor(((new Date(selectedPatientModal.completed_at + (selectedPatientModal.completed_at.endsWith('Z') ? '' : 'Z')) - new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z'))) % 60000) / 1000)}s
-                                                    </span>
+                                                <div className="text-[10px] font-black uppercase text-indigo-500 tracking-widest leading-none mb-1">Registered</div>
+                                                <div className="text-sm font-bold text-slate-800">Arrival & Token Issued</div>
+                                                <div className="text-[11px] text-slate-700 font-medium flex items-center gap-1 mt-0.5">
+                                                    <UserCircle size={10} /> Received by: <span className="text-slate-700 font-bold">{selectedPatientModal.registrar_name || 'System / Kiosk'}</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-xs font-black text-slate-800">{new Date(selectedPatientModal.completed_at + (selectedPatientModal.completed_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                            <div className="text-xs font-black text-slate-800">{new Date(selectedPatientModal.created_at + (selectedPatientModal.created_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                            <div className="text-[10px] text-slate-800 font-bold uppercase">{new Date(selectedPatientModal.created_at + (selectedPatientModal.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
                                         </div>
                                     </div>
-                                )}
-                            </div>
 
-                            {/* Additional Info Footer */}
-                            <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visit Category</div>
-                                    <div className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
-                                        {selectedPatientModal.visit_type || 'General'}
-                                    </div>
+                                    {/* 2. In Queue */}
+                                    {selectedPatientModal.called_at && (
+                                        <div className="relative flex items-center justify-between gap-4 group">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-500 text-white shadow-lg shadow-amber-200 z-10 shrink-0 ring-4 ring-white">
+                                                    <Hourglass size={18} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase text-amber-600 tracking-widest leading-none mb-1">Queueing</div>
+                                                    <div className="text-sm font-bold text-slate-800">Time Spent in Waiting Area</div>
+                                                    <div className="text-[11px] text-slate-700 font-medium flex items-center gap-1 mt-0.5">
+                                                        <Clock3 size={10} /> Duration: <span className="text-amber-700 font-black">
+                                                            {Math.floor((new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z')) - new Date(selectedPatientModal.created_at + (selectedPatientModal.created_at.endsWith('Z') ? '' : 'Z'))) / 60000)} mins
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 3. Called / With Staff */}
+                                    {selectedPatientModal.called_at && (
+                                        <div className="relative flex items-center justify-between gap-4 group">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-200 z-10 shrink-0 ring-4 ring-white">
+                                                    <Stethoscope size={18} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase text-blue-500 tracking-widest leading-none mb-1">Consultation</div>
+                                                    <div className="text-sm font-bold text-slate-800">Medical Service Initiated</div>
+                                                    <div className="flex flex-col gap-1 mt-1">
+                                                        <div className="text-[11px] text-slate-700 font-medium flex items-center gap-1">
+                                                            <MapPin size={10} /> Room: <span className="text-slate-700 font-bold">{selectedPatientModal.room_number || 'N/A'}</span>
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-700 font-medium flex items-center gap-1">
+                                                            <UserCircle size={10} /> Staff: <span className="text-slate-700 font-bold">{selectedPatientModal.doctor_name || 'N/A'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right self-start mt-2">
+                                                <div className="text-xs font-black text-slate-800">{new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 4. End of Service */}
+                                    {selectedPatientModal.completed_at && (
+                                        <div className="relative flex items-center justify-between gap-4 group">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-200 z-10 shrink-0 ring-4 ring-white">
+                                                    <CheckCircle2 size={18} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase text-emerald-600 tracking-widest leading-none mb-1">Completed</div>
+                                                    <div className="text-sm font-bold text-emerald-800">Session Closed</div>
+                                                    <div className="text-[11px] text-slate-700 font-medium flex items-center gap-1 mt-0.5">
+                                                        <Activity size={10} /> Total Service Time: <span className="text-emerald-700 font-black">
+                                                            {Math.floor((new Date(selectedPatientModal.completed_at + (selectedPatientModal.completed_at.endsWith('Z') ? '' : 'Z')) - new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z'))) / 60000)}m {Math.floor(((new Date(selectedPatientModal.completed_at + (selectedPatientModal.completed_at.endsWith('Z') ? '' : 'Z')) - new Date(selectedPatientModal.called_at + (selectedPatientModal.called_at.endsWith('Z') ? '' : 'Z'))) % 60000) / 1000)}s
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xs font-black text-slate-800">{new Date(selectedPatientModal.completed_at + (selectedPatientModal.completed_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="space-y-1 text-right">
-                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Priority Class</div>
-                                    <div className={`text-sm font-bold ${selectedPatientModal.priority_name === 'Emergency' ? 'text-red-600' : 'text-slate-700'}`}>
-                                        {selectedPatientModal.priority_name || 'Standard'}
+
+                                {/* Additional Info Footer */}
+                                <div className="mt-8 pt-6 border-t border-slate-100 grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <div className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Visit Category</div>
+                                        <div className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                                            {selectedPatientModal.visit_type || 'General'}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 text-right">
+                                        <div className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Priority Class</div>
+                                        <div className={`text-sm font-bold ${selectedPatientModal.priority_name === 'Emergency' ? 'text-red-600' : 'text-slate-700'}`}>
+                                            {selectedPatientModal.priority_name || 'Standard'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+                )
+            }
+
+            {/* History Purge Modal */}
+            {
+                isHistoryPurgeModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-amber-500 transform animate-in zoom-in-95 duration-200">
+                            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4"><AlertTriangle size={24} /></div>
+                            <h3 className="font-bold text-2xl text-slate-800 mb-2">Critical Purge</h3>
+                            <p className="text-slate-700 mb-6 font-medium">
+                                You are about to permanently delete history from <strong className="text-slate-900">{filterStartDate}</strong> to <strong className="text-slate-900">{filterEndDate}</strong>. This cannot be undone.
+                            </p>
+
+                            <form onSubmit={handlePurgeHistory} className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase text-slate-800">Reason for Purge</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. End of month cleanup, GDPR compliance..."
+                                        value={purgeReason}
+                                        onChange={(e) => setPurgeReason(e.target.value)}
+                                        className={`${inputClasses}`}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase text-slate-800">Admin Password</label>
+                                    <input
+                                        type="password"
+                                        placeholder="Enter your password"
+                                        value={purgePassword}
+                                        onChange={(e) => setPurgePassword(e.target.value)}
+                                        className={`${inputClasses} border-amber-100 focus:border-amber-400 focus:ring-amber-100`}
+                                        required
+                                    />
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setIsHistoryPurgeModalOpen(false); setPurgePassword(''); setPurgeReason(''); }}
+                                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-xl transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={!purgePassword || !purgeReason}
+                                        className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-amber-600/20 active:scale-[0.98]"
+                                    >
+                                        Purge Records
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
+    );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Intelligent Roster Reports Component
+// ─────────────────────────────────────────────────────────────
+const AI_PERIODS = [
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'quarterly', label: 'Quarterly' },
+    { value: 'yearly', label: 'Yearly' },
+];
+
+function AdminAIReportTab({ authHeader, aiPeriod, setAiPeriod, aiReport, setAiReport, aiLoading, setAiLoading, aiError, setAiError }) {
+    const API_URL = 'https://' + window.location.hostname + ':8000';
+
+    const generateReport = async () => {
+        setAiLoading(true);
+        setAiError(null);
+        setAiReport(null);
+        try {
+            const res = await fetch(`${API_URL}/roster/reports/ai-summary?period=${aiPeriod}`, { headers: authHeader });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to generate report');
+            }
+            setAiReport(await res.json());
+        } catch (e) {
+            setAiError(e.message);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    const kpis = aiReport?.kpis || {};
+    const warnings = aiReport?.warnings || {};
+    const optimizations = aiReport?.optimizations || [];
+    const depts = aiReport?.department_breakdown || [];
+    const staff = aiReport?.staff_breakdown || [];
+    const burnoutCount = warnings?.burnout_risks?.length || 0;
+    const gapCount = warnings?.coverage_gaps?.length || 0;
+
+    const renderNarrative = (text) => {
+        if (!text) return null;
+        return text.split('\n').map((line, i) => {
+            if (line.startsWith('## '))
+                return <h2 key={i} className="text-xl font-black text-slate-800 mt-2 mb-3">{line.replace('## ', '')}</h2>;
+            if (line.startsWith('### ')) {
+                const content = line.replace('### ', '').replace(/[^\w\s\-–—,.:;!?()&]/g, '').trim();
+                return <h3 key={i} className="text-sm font-black mt-5 mb-2 uppercase tracking-wider text-slate-800">{content}</h3>;
+            }
+            if (line.startsWith('- ')) {
+                const parts = line.replace('- ', '').replace(/[^\w\s\-–—,.:;!?()&*]/g, '').split(/\*\*(.*?)\*\*/);
+                return (
+                    <li key={i} className="text-sm text-slate-800 ml-2 my-1 flex items-start gap-2">
+                        <ChevronRight size={13} className="text-slate-800 mt-0.5 shrink-0" />
+                        <span>{parts.map((p, j) => j % 2 === 1 ? <strong key={j} className="text-slate-800">{p}</strong> : p)}</span>
+                    </li>
+                );
+            }
+            if (!line.trim()) return <div key={i} className="h-2" />;
+            const parts = line.replace(/[^\w\s\-–—,.:;!?()&*%]/g, '').split(/\*\*(.*?)\*\*/);
+            return <p key={i} className="text-sm text-slate-800 leading-relaxed">{parts.map((p, j) => j % 2 === 1 ? <strong key={j} className="text-slate-800">{p}</strong> : p)}</p>;
+        });
+    };
+
+    return (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+            {/* ── Controls bar ── */}
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <div>
+                    <div className="flex items-center gap-2.5 mb-0.5">
+                        <div className="p-2 bg-violet-600 rounded-xl text-white shadow shadow-violet-300">
+                            <Sparkles size={16} />
+                        </div>
+                        <h3 className="font-black text-slate-800 text-base">Intelligent Roster Reports</h3>
+                    </div>
+                    <p className="text-xs text-slate-800 font-medium ml-10">Detect burnout risks, coverage gaps, and roster inefficiencies across any period.</p>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                        {AI_PERIODS.map(p => (
+                            <button key={p.value} onClick={() => setAiPeriod(p.value)}
+                                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${aiPeriod === p.value
+                                    ? 'bg-white text-violet-700 shadow-sm border border-violet-100'
+                                    : 'text-slate-700 hover:text-slate-700'
+                                    }`}>
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                    <button onClick={generateReport} disabled={aiLoading}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-violet-200 hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+                        {aiLoading
+                            ? <><Loader2 size={15} className="animate-spin" /> Generating...</>
+                            : <><Sparkles size={15} /> Generate Report</>}
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Error ── */}
+            {aiError && (
+                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700">
+                    <AlertTriangle size={17} className="shrink-0 mt-0.5" /><span>{aiError}</span>
                 </div>
             )}
 
-            {/* History Purge Modal */}
-            {isHistoryPurgeModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border-t-8 border-amber-500 transform animate-in zoom-in-95 duration-200">
-                        <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4"><AlertTriangle size={24} /></div>
-                        <h3 className="font-bold text-2xl text-slate-800 mb-2">Critical Purge</h3>
-                        <p className="text-slate-500 mb-6 font-medium">
-                            You are about to permanently delete history from <strong className="text-slate-900">{filterStartDate}</strong> to <strong className="text-slate-900">{filterEndDate}</strong>. This cannot be undone.
-                        </p>
+            {/* ── Empty State ── */}
+            {!aiReport && !aiLoading && !aiError && (
+                <div className="flex flex-col items-center justify-center py-28 border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50/50">
+                    <div className="p-5 bg-violet-100 rounded-2xl mb-5">
+                        <Sparkles size={36} className="text-violet-400" />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-700 mb-1">Select a period and generate</h3>
+                    <p className="text-sm text-slate-800 max-w-sm text-center">
+                        Choose a timeframe above, then click <strong className="text-slate-800">Generate Report</strong> to run intelligent roster analysis.
+                    </p>
+                </div>
+            )}
 
-                        <form onSubmit={handlePurgeHistory} className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase text-slate-400">Reason for Purge</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. End of month cleanup, GDPR compliance..."
-                                    value={purgeReason}
-                                    onChange={(e) => setPurgeReason(e.target.value)}
-                                    className={`${inputClasses}`}
-                                    required
-                                />
+            {/* ── Loading ── */}
+            {aiLoading && (
+                <div className="flex flex-col items-center justify-center py-28">
+                    <div className="p-5 bg-violet-100 rounded-2xl mb-5 animate-pulse">
+                        <Sparkles size={36} className="text-violet-500" />
+                    </div>
+                    <p className="font-bold text-slate-800">Analysing roster data…</p>
+                    <p className="text-sm text-slate-800 mt-1">This may take a few seconds.</p>
+                </div>
+            )}
+
+            {/* ── Report ── */}
+            {aiReport && !aiLoading && (
+                <div className="space-y-5">
+
+                    {/* Fallback banner */}
+                    {aiReport.is_fallback && (
+                        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-700">
+                            <AlertTriangle size={17} className="shrink-0 mt-0.5" /> Roster analysis service is offline — showing fallback data.
+                        </div>
+                    )}
+
+                    {/* KPI row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                            { label: 'Staff Rostered', value: kpis.total_staff_rostered ?? '—', accent: 'border-indigo-500', iconBg: 'bg-indigo-50', iconColor: 'text-indigo-500', icon: <Users size={18} /> },
+                            { label: 'Total Shifts', value: kpis.total_shifts ?? '—', accent: 'border-violet-500', iconBg: 'bg-violet-50', iconColor: 'text-violet-500', icon: <Calendar size={18} /> },
+                            { label: 'Hours Scheduled', value: kpis.total_hours_rostered != null ? `${kpis.total_hours_rostered}h` : '—', accent: 'border-blue-500', iconBg: 'bg-blue-50', iconColor: 'text-blue-500', icon: <ClockIcon size={18} /> },
+                            { label: 'Departments', value: kpis.departments_monitored ?? '—', accent: 'border-purple-500', iconBg: 'bg-purple-50', iconColor: 'text-purple-500', icon: <BarChart2 size={18} /> },
+                        ].map(({ label, value, accent, iconBg, iconColor, icon }) => (
+                            <div key={label} className={`bg-white border border-slate-100 border-l-4 ${accent} rounded-2xl p-5 shadow-sm`}>
+                                <div className={`inline-flex p-2 ${iconBg} rounded-lg ${iconColor} mb-3`}>{icon}</div>
+                                <div className="text-3xl font-black text-slate-800 mb-0.5">{value}</div>
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-800">{label}</div>
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase text-slate-400">Admin Password</label>
-                                <input
-                                    type="password"
-                                    placeholder="Enter your password"
-                                    value={purgePassword}
-                                    onChange={(e) => setPurgePassword(e.target.value)}
-                                    className={`${inputClasses} border-amber-100 focus:border-amber-400 focus:ring-amber-100`}
-                                    required
-                                />
+                        ))}
+                    </div>
+
+                    {/* Info pills */}
+                    <div className="flex flex-wrap gap-2">
+                        {kpis.start_date && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-800 text-xs font-bold rounded-full border border-slate-200">
+                                <CalendarDays size={12} /> {kpis.start_date} — {kpis.end_date}
+                            </span>
+                        )}
+                        {kpis.busiest_department && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-full border border-indigo-100">
+                                <TrendingUp size={12} /> Busiest: {kpis.busiest_department}
+                            </span>
+                        )}
+                        {kpis.avg_hours_per_staff && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 text-slate-800 text-xs font-bold rounded-full border border-slate-200">
+                                <ClockIcon size={12} /> Avg {kpis.avg_hours_per_staff}h / staff · {kpis.avg_shifts_per_staff} shifts
+                            </span>
+                        )}
+                        {burnoutCount > 0 && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-xs font-bold rounded-full border border-amber-200">
+                                <AlertTriangle size={12} /> {burnoutCount} Burnout Risk{burnoutCount > 1 ? 's' : ''}
+                            </span>
+                        )}
+                        {gapCount > 0 && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-bold rounded-full border border-orange-200">
+                                <AlertTriangle size={12} /> {gapCount} Coverage Gap{gapCount > 1 ? 's' : ''}
+                            </span>
+                        )}
+                        {burnoutCount === 0 && gapCount === 0 && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
+                                <CheckCircle2 size={12} /> Roster health looks good
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Narrative */}
+                    <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                        <div className="flex items-center gap-2.5 mb-5 pb-4 border-b border-slate-50">
+                            <div className="p-2 bg-violet-100 rounded-lg"><Sparkles size={15} className="text-violet-600" /></div>
+                            <h4 className="font-black text-slate-800">Intelligent Roster Analysis</h4>
+                        </div>
+                        <div className="prose prose-sm max-w-none">{renderNarrative(aiReport.narrative)}</div>
+                    </div>
+
+                    {/* Department Breakdown */}
+                    {depts.length > 0 && (
+                        <div>
+                            <h4 className="font-black text-slate-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
+                                <BarChart3 size={16} className="text-slate-800" /> Department Breakdown
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {depts.map(d => (
+                                    <div key={d.department_id} className="bg-white border border-slate-100 rounded-xl p-4 flex justify-between items-center hover:border-indigo-200 hover:shadow-sm transition-all">
+                                        <div>
+                                            <p className="font-bold text-slate-800 text-sm">{d.department_name}</p>
+                                            <p className="text-xs text-slate-800 mt-0.5">{d.days_covered} day(s) covered</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-lg font-black text-indigo-600">{d.total_shifts}</p>
+                                            <p className="text-xs text-slate-800">shifts · {d.total_hours}h</p>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => { setIsHistoryPurgeModalOpen(false); setPurgePassword(''); setPurgeReason(''); }}
-                                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-xl transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!purgePassword || !purgeReason}
-                                    className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-amber-600/20 active:scale-[0.98]"
-                                >
-                                    Purge Records
-                                </button>
+                        </div>
+                    )}
+
+                    {/* Staff Breakdown */}
+                    {staff.length > 0 && (
+                        <div>
+                            <h4 className="font-black text-slate-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
+                                <Users size={16} className="text-slate-800" /> Staff Hours Breakdown
+                            </h4>
+                            <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                                <table className="w-full text-left">
+                                    <thead className="bg-slate-800 text-[10px] font-black text-slate-800 uppercase tracking-widest">
+                                        <tr>
+                                            <th className="px-5 py-4">Staff Member</th>
+                                            <th className="px-5 py-4">Role</th>
+                                            <th className="px-5 py-4 text-center">Shifts</th>
+                                            <th className="px-5 py-4 text-right">Hours</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {staff.slice(0, 10).map(s => {
+                                            const isBurnt = warnings?.burnout_risks?.some(b => b.staff_id === s.staff_id);
+                                            return (
+                                                <tr key={s.staff_id} className={`hover:bg-slate-50/50 transition-colors ${isBurnt ? 'bg-amber-50/30' : ''}`}>
+                                                    <td className="px-5 py-3 text-sm">
+                                                        <div className="flex items-center gap-2">
+                                                            {isBurnt && <span className="inline-flex items-center justify-center w-5 h-5 bg-amber-100 rounded-full shrink-0"><AlertTriangle size={11} className="text-amber-600" /></span>}
+                                                            <span className="font-bold text-slate-800">{s.staff_name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-3">
+                                                        <span className="text-xs bg-slate-100 text-slate-800 px-2 py-1 rounded-lg font-bold">{s.role}</span>
+                                                    </td>
+                                                    <td className="px-5 py-3 text-center font-bold text-slate-800 text-sm">{s.total_shifts}</td>
+                                                    <td className="px-5 py-3 text-right">
+                                                        <span className={`font-black text-sm ${s.total_hours > 48 ? 'text-amber-600' : 'text-slate-800'}`}>{s.total_hours}h</span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
-                        </form>
+                        </div>
+                    )}
+
+                    {/* Optimizations */}
+                    {optimizations.length > 0 && !optimizations[0].includes('offline') && (
+                        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+                            <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                                <TrendingUp size={16} className="text-violet-500" /> Roster Optimisation Recommendations
+                            </h4>
+                            <ul className="space-y-2.5">
+                                {optimizations.map((opt, i) => {
+                                    const parts = opt.replace(/[^\w\s\-–—,.:;!?()&*%]/g, '').split(/\*\*(.*?)\*\*/);
+                                    return (
+                                        <li key={i} className="flex items-start gap-2.5 text-sm text-slate-800">
+                                            <ChevronRight size={15} className="text-violet-400 shrink-0 mt-0.5" />
+                                            <span>{parts.map((p, j) => j % 2 === 1 ? <strong key={j} className="text-slate-800">{p}</strong> : p)}</span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Regenerate */}
+                    <div className="flex justify-end pt-1">
+                        <button onClick={generateReport}
+                            className="flex items-center gap-2 px-5 py-2.5 border border-violet-200 text-violet-700 font-bold text-sm rounded-xl hover:bg-violet-50 transition-colors">
+                            <RefreshCw size={13} /> Regenerate
+                        </button>
                     </div>
                 </div>
             )}

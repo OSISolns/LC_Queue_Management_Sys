@@ -227,6 +227,7 @@ export default function DutyRosterPanel({ authHeader }) {
                 >
                     <Eye size={16} /> View Roster
                 </button>
+
             </div>
 
             {/* Content */}
@@ -507,6 +508,8 @@ export default function DutyRosterPanel({ authHeader }) {
                         <RosterViewer token={localStorage.getItem('token') || authHeader.Authorization?.split(' ')[1]} />
                     </div>
                 )}
+
+
             </div>
         </div>
     );

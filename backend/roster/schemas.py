@@ -57,6 +57,7 @@ class RosterAssignmentBase(BaseModel):
     shift_end_time: time
     shift_label: str
     phone: Optional[str] = None
+    room_number: Optional[str] = None
 
 class RosterAssignmentCreate(RosterAssignmentBase):
     roster_day_id: int
@@ -69,6 +70,7 @@ class RosterAssignmentUpdate(BaseModel):
     shift_end_time: Optional[time] = None
     shift_label: Optional[str] = None
     phone: Optional[str] = None
+    room_number: Optional[str] = None
 
 class RosterAssignmentResponse(RosterAssignmentBase):
     id: int
@@ -154,3 +156,61 @@ class DepartmentCoverage(BaseModel):
 class CoverageResponse(BaseModel):
     date: date
     departments: List[DepartmentCoverage]
+
+
+# ==========================================
+# AI Roster Report Schemas
+# ==========================================
+
+class RosterReportPeriod(str):
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    YEARLY = "yearly"
+
+
+class AIRosterReportRequest(BaseModel):
+    """Request body for the AI roster insights endpoint."""
+    period: str  # "weekly" | "monthly" | "quarterly" | "yearly"
+    # If provided, override the auto-computed date window
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class AIReportKPIs(BaseModel):
+    period: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    total_days_covered: Optional[int] = None
+    total_staff_rostered: int
+    total_shifts: int
+    total_hours_rostered: float
+    avg_hours_per_staff: Optional[float] = None
+    avg_shifts_per_staff: Optional[float] = None
+    departments_monitored: Optional[int] = None
+    busiest_department: Optional[str] = None
+    quietest_department: Optional[str] = None
+
+
+class AIRosterReportResponse(BaseModel):
+    """Full response from the AI roster insight generator."""
+    kpis: Dict[str, Any]
+    narrative: str
+    warnings: Dict[str, Any]
+    optimizations: List[str]
+    department_breakdown: List[Dict[str, Any]]
+    staff_breakdown: List[Dict[str, Any]]
+    is_fallback: Optional[bool] = False
+
+class MyScheduleResponse(BaseModel):
+    id: int
+    date: date
+    shift_label: str
+    shift_start_time: time
+    shift_end_time: time
+    room_number: Optional[str] = None
+    department_name: str
+    unit_name: Optional[str] = None
+
+    class Config:
+        orm_mode = True

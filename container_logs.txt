@@ -1,0 +1,76 @@
+frontend-1  | 
+frontend-1  | > frontend@0.0.0 dev
+frontend-1  | > vite --host 0.0.0.0
+frontend-1  | 
+frontend-1  | failed to load config from /frontend/vite.config.js
+frontend-1  | error when starting dev server:
+frontend-1  | Error: ENOENT: no such file or directory, open '/certs/key.pem'
+frontend-1  |     at Object.openSync (node:fs:574:18)
+frontend-1  |     at Object.readFileSync (node:fs:453:35)
+frontend-1  |     at file:///frontend/node_modules/.vite-temp/vite.config.js.timestamp-1772549100843-205b9c4021f38.mjs:14:15
+frontend-1  |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+frontend-1  |     at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+frontend-1  |     at async loadConfigFromBundledFile (file:///frontend/node_modules/vite/dist/node/chunks/config.js:35909:12)
+frontend-1  |     at async bundleAndLoadConfigFile (file:///frontend/node_modules/vite/dist/node/chunks/config.js:35797:17)
+frontend-1  |     at async loadConfigFromFile (file:///frontend/node_modules/vite/dist/node/chunks/config.js:35764:42)
+frontend-1  |     at async resolveConfig (file:///frontend/node_modules/vite/dist/node/chunks/config.js:35413:22)
+frontend-1  |     at async _createServer (file:///frontend/node_modules/vite/dist/node/chunks/config.js:25362:67)
+qms-api-1   | ERROR:    Error loading ASGI app. Could not import module "backend.main".
+qms-ai-service-1  | Traceback (most recent call last):
+qms-ai-service-1  |   File "/usr/local/bin/uvicorn", line 8, in <module>
+qms-ai-service-1  |     sys.exit(main())
+qms-ai-service-1  |              ^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1485, in __call__
+qms-ai-service-1  |     return self.main(*args, **kwargs)
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1406, in main
+qms-ai-service-1  |     rv = self.invoke(ctx)
+qms-ai-service-1  |          ^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1269, in invoke
+qms-ai-service-1  |     return ctx.invoke(self.callback, **ctx.params)
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/click/core.py", line 824, in invoke
+qms-ai-service-1  |     return callback(*args, **kwargs)
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 433, in main
+qms-ai-service-1  |     run(
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 606, in run
+qms-ai-service-1  |     server.run()
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 75, in run
+qms-ai-service-1  |     return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+qms-ai-service-1  |     return runner.run(main)
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+qms-ai-service-1  |     return self._loop.run_until_complete(task)
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+qms-ai-service-1  |     return future.result()
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 79, in serve
+qms-ai-service-1  |     await self._serve(sockets)
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 86, in _serve
+qms-ai-service-1  |     config.load()
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 441, in load
+qms-ai-service-1  |     self.loaded_app = import_from_string(self.app)
+qms-ai-service-1  |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 22, in import_from_string
+qms-ai-service-1  |     raise exc from None
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+qms-ai-service-1  |     module = importlib.import_module(module_str)
+qms-ai-service-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+qms-ai-service-1  |     return _bootstrap._gcd_import(name[level:], package, level)
+qms-ai-service-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+qms-ai-service-1  |   File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+qms-ai-service-1  |   File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+qms-ai-service-1  |   File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+qms-ai-service-1  |   File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+qms-ai-service-1  |   File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+qms-ai-service-1  |   File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+qms-ai-service-1  |   File "/app/ai_service/main.py", line 6, in <module>
+qms-ai-service-1  |     from .config import settings
+qms-ai-service-1  |   File "/app/ai_service/config.py", line 2, in <module>
+qms-ai-service-1  |     from pydantic_settings import BaseSettings
+qms-ai-service-1  | ModuleNotFoundError: No module named 'pydantic_settings'

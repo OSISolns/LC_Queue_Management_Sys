@@ -1,4 +1,5 @@
 import httpx
+import os
 import logging
 from functools import lru_cache
 from typing import Optional, Dict, Any
@@ -11,7 +12,8 @@ from cachetools import TTLCache
 ai_cache = TTLCache(maxsize=1000, ttl=60) # 60 seconds
 
 # In a real deployed environment, AI_SERVICE_URL would come from ENV vars or config
-AI_SERVICE_URL = "http://localhost:8001/api/v1"
+# Updated to point to the docker-compose service name by default
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://127.0.0.1:8001/api/v1")
 
 class QMSAIClient:
     """Client for interacting with the separate qms-ai-service."""
@@ -85,6 +87,36 @@ class QMSAIClient:
         except Exception as e:
             logger.error(f"AI Service Routing recommendation failed: {str(e)}")
             return self._fallback_recommendation()
+
+    def _fallback_roster_insights(self, period: str) -> Dict[str, Any]:
+        """Fallback when AI service is unavailable for roster insights."""
+        return {
+            "kpis": {"period": period, "total_staff_rostered": 0, "total_shifts": 0, "total_hours_rostered": 0},
+            "narrative": (
+                "## AI Roster Report\n\n"
+                "⚠️ **The AI Service is temporarily unavailable.** "
+                "Please try again shortly or check that the AI service container is running."
+            ),
+            "warnings": {"burnout_risks": [], "coverage_gaps": [], "low_staffed_departments": []},
+            "optimizations": ["AI service offline — insights unavailable."],
+            "department_breakdown": [],
+            "staff_breakdown": [],
+            "is_fallback": True,
+        }
+
+    async def get_roster_insights(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Call the AI service to generate roster insights for the given period."""
+        period = payload.get("period", "unknown")
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(f"{self.base_url}/reports/roster_insights", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                data["is_fallback"] = False
+                return data
+        except Exception as e:
+            logger.error(f"AI Roster Insights failed: {str(e)}")
+            return self._fallback_roster_insights(period)
 
 # Singleton instance
 ai_client = QMSAIClient()

@@ -43,6 +43,8 @@ class Patient(Base):
     # Relationships
     queue_entries = relationship("Queue", back_populates="patient")
     visit_history = relationship("VisitHistory", back_populates="patient", order_by="desc(VisitHistory.visit_date)")
+    appointments = relationship("Appointment", back_populates="patient")
+    reviews = relationship("DoctorReview", back_populates="patient")
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.mrn})"
@@ -67,6 +69,7 @@ class Queue(Base):
     called_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     visit_type = Column(String, nullable=True)  # New Patient, Follow-up, Emergency
+    doctor_notes = Column(Text, nullable=True)   # Doctor's consultation notes
 
     # Relationships
     priority = relationship("PriorityLevel", back_populates="queue_entries")
@@ -146,6 +149,7 @@ class VisitHistory(Base):
     treatment = Column(Text, nullable=True)
     prescription = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    doctor_notes = Column(Text, nullable=True)
     status = Column(String, default="completed")  # completed, no-show, cancelled
     duration_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -173,6 +177,7 @@ class Room(Base):
     name = Column(String, unique=True, index=True)
     department_id = Column(Integer, ForeignKey("departments.id"))
     floor = Column(String, nullable=True)
+    extension = Column(String, nullable=True)  # Internal phone extension e.g. "1124"
     
     department = relationship("Department", back_populates="rooms")
 
@@ -206,10 +211,13 @@ class User(Base):
     email = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
     salutation = Column(String, nullable=True)
+    profile_picture = Column(String, nullable=True)
     last_login = Column(DateTime, nullable=True)
     
     role = relationship("Role", back_populates="users")
     department = relationship("Department")
+    appointments = relationship("Appointment", back_populates="doctor")
+    reviews = relationship("DoctorReview", back_populates="doctor")
 
     def __str__(self):
         return self.username
@@ -256,6 +264,7 @@ class DoctorRoster(Base):
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     day_of_week = Column(String, nullable=False)  # Monday, Tuesday, ...
     status = Column(String, default="available")   # available, on_call, not_available
+    schedule_text = Column(String, nullable=True)  # Detailed times e.g. 8:00 AM - 5:00 PM
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     doctor = relationship("User", foreign_keys=[doctor_id])
@@ -276,3 +285,202 @@ class Setting(Base):
 
     def __str__(self):
         return self.key
+
+
+# ==========================================
+# Secure File Sharing Hub Models
+# ==========================================
+
+class FileCategory(Base):
+    __tablename__ = "file_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    description = Column(String, nullable=True)
+
+    documents = relationship("Document", back_populates="category")
+
+    def __str__(self):
+        return self.name
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False) # e.g., safe UUID-based name on disk
+    original_name = Column(String, nullable=False) # original name e.g. "report.pdf"
+    stored_path = Column(String, nullable=False)
+    category_id = Column(Integer, ForeignKey("file_categories.id"), nullable=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    upload_date = Column(DateTime, default=datetime.utcnow)
+    file_size = Column(Integer, nullable=True) # size in bytes
+    mime_type = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+
+    category = relationship("FileCategory", back_populates="documents")
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
+    role_access = relationship("DocumentRoleAccess", back_populates="document", cascade="all, delete-orphan")
+    audit_logs = relationship("FileAuditLog", back_populates="document", cascade="all, delete-orphan")
+
+    def __str__(self):
+        return self.original_name
+
+class DocumentRoleAccess(Base):
+    __tablename__ = "document_role_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
+    permission_type = Column(String, nullable=False, default="view_only") # view_only, view_download
+
+    document = relationship("Document", back_populates="role_access")
+    role = relationship("Role")
+
+class FileAuditLog(Base):
+    __tablename__ = "file_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    action = Column(String, nullable=False) # view, download, denied
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    document = relationship("Document", back_populates="audit_logs")
+
+
+# ==========================================
+# Server-Side Session Tracking
+# ==========================================
+
+class UserSession(Base):
+    """
+    Tracks active user sessions for server-side idle timeout enforcement.
+    A row is created on login and deleted on logout.
+    last_activity is updated on every authenticated request.
+    If last_activity is older than IDLE_TIMEOUT_SECONDS, the session is rejected.
+    """
+    __tablename__ = "user_sessions"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    token_hash    = Column(String, unique=True, index=True, nullable=False)  # SHA-256 of the JWT
+    user_id       = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+    last_activity = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+    def __str__(self):
+        return f"Session(user_id={self.user_id}, last={self.last_activity})"
+
+# ==========================================
+# Patient Portal Models
+# ==========================================
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    appointment_date = Column(DateTime, nullable=False)
+    reason = Column(String, nullable=True)
+    status = Column(String, default="scheduled")  # scheduled, completed, cancelled, no-show
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    patient = relationship("Patient", back_populates="appointments")
+    doctor = relationship("User", back_populates="appointments")
+
+class DoctorReview(Base):
+    __tablename__ = "doctor_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    rating = Column(Integer, nullable=False)  # 1-5
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    patient = relationship("Patient", back_populates="reviews")
+    doctor = relationship("User", back_populates="reviews")
+
+class ObservationNote(Base):
+    """Nurses notes for patients under observation"""
+    __tablename__ = "observation_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Nurse who wrote the note
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    patient = relationship("Patient")
+    nurse = relationship("User")
+
+    @property
+    def nurse_name(self):
+        if not self.nurse: return "Unknown Nurse"
+        name = self.nurse.full_name or self.nurse.username
+        if self.nurse.salutation:
+            return f"{self.nurse.salutation} {name}"
+        return name
+
+class PatientVitals(Base):
+    """Patient Vitals - Recorded by Nursing staff during Triage"""
+    __tablename__ = "patient_vitals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Core Vitals
+    temperature = Column(String, nullable=True) # °C
+    weight = Column(String, nullable=True)      # kg
+    height = Column(String, nullable=True)      # cm
+    blood_pressure = Column(String, nullable=True) # 120/80
+    heart_rate = Column(String, nullable=True)     # bpm
+    respiratory_rate = Column(String, nullable=True) # bpm
+    spo2 = Column(String, nullable=True)           # %
+    bmi = Column(String, nullable=True)
+    
+    notes = Column(Text, nullable=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    patient = relationship("Patient")
+    nurse = relationship("User")
+
+    @property
+    def nurse_name(self):
+        num = self.nurse.full_name or self.nurse.username if self.nurse else "Unknown Nurse"
+        if self.nurse and self.nurse.salutation:
+            return f"{self.nurse.salutation} {num}"
+        return num
+
+class MedicationAdministration(Base):
+    """Track medications administered by nurses"""
+    __tablename__ = "medication_administrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    medication_name = Column(String, nullable=False)
+    dosage = Column(String, nullable=True)
+    route = Column(String, nullable=True) # Oral, IV, etc.
+    administered_at = Column(DateTime, default=datetime.utcnow)
+    notes = Column(Text, nullable=True)
+
+    # Relationships
+    patient = relationship("Patient")
+    nurse = relationship("User")
+
+    @property
+    def nurse_name(self):
+        if not self.nurse: return "Unknown Nurse"
+        name = self.nurse.full_name or self.nurse.username
+        if self.nurse.salutation:
+            return f"{self.nurse.salutation} {name}"
+        return name

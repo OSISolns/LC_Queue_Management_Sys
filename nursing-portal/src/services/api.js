@@ -1,0 +1,206 @@
+import axios from 'axios';
+
+const API_BASE = "http://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8000";
+
+const api = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const fetchNurses = async () => {
+  try {
+    const response = await api.get('/users?role_name=Nurse');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching nurses:', error);
+    throw error;
+  }
+};
+
+export const fetchQueue = async () => {
+  try {
+    const response = await api.get('/queue');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching queue:', error);
+    throw error;
+  }
+};
+
+export const fetchStats = async () => {
+  try {
+    const response = await api.get('/stats');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    throw error;
+  }
+};
+
+export const callNextPatient = async (roomNumber, doctorId) => {
+  try {
+    const response = await api.post('/queue/next', {
+      room_number: roomNumber,
+      doctor_id: doctorId,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error calling next patient:', error);
+    throw error;
+  }
+};
+
+export const completePatient = async (patientId) => {
+  try {
+    const response = await api.post(`/complete/${patientId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error completing patient:', error);
+    throw error;
+  }
+};
+
+export const fetchAllPatients = async () => {
+  try {
+    const response = await api.get('/patients-all');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching all patients:', error);
+    throw error;
+  }
+};
+
+export const fetchPatientDetail = async (patientId) => {
+
+  try {
+    const response = await api.get(`/patients/${patientId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching patient details:', error);
+    throw error;
+  }
+};
+
+export const fetchPatientVisits = async (patientId) => {
+  try {
+    const response = await api.get(`/portal/patients/${patientId}/visits`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching patient visits:', error);
+    throw error;
+  }
+};
+
+export default api;
+
+
+
+export const createObservationNote = async (patientId, content, nurseId) => {
+  try {
+    const response = await api.post(`/patients/${patientId}/observation-notes`, {
+      patient_id: patientId,
+      content,
+      nurse_id: nurseId
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating observation note:', error);
+    throw error;
+  }
+};
+
+export const fetchObservationNotes = async (patientId) => {
+  try {
+    const response = await api.get(`/patients/${patientId}/observation-notes`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching observation notes:', error);
+    throw error;
+  }
+};
+
+export const administerMedication = async (patientId, medData) => {
+  try {
+    const response = await api.post(`/patients/${patientId}/medications`, {
+      ...medData,
+      patient_id: patientId
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error administering medication:', error);
+    throw error;
+  }
+};
+
+export const fetchMedications = async (patientId) => {
+  try {
+    const response = await api.get(`/patients/${patientId}/medications`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching medications:', error);
+    throw error;
+  }
+};
+
+export const fetchMySchedule = async (userId) => {
+  try {
+    const response = await api.get(`/roster/my-schedule`, {
+      params: { user_id: userId } // We usually use token, but for this portal we might need to send it if backend expects it
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    throw error;
+  }
+};
+
+export const updateUserRoom = async (userId, roomNumber) => {
+  try {
+    const response = await api.put(`/users/${userId}/room`, {
+      room_number: roomNumber
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating room:', error);
+    throw error;
+  }
+};
+
+export const uploadUserProfilePicture = async (userId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await api.post(`/users/${userId}/profile-picture`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error uploading profile picture:', error);
+    throw error;
+  }
+};
+
+export const fetchPatientVitals = async (patientId) => {
+  try {
+    const response = await api.get(`/patients/${patientId}/vitals`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching patient vitals:', error);
+    throw error;
+  }
+};
+
+export const recordPatientVitals = async (patientId, vitalsData) => {
+  try {
+    const response = await api.post(`/patients/${patientId}/vitals`, vitalsData);
+    return response.data;
+  } catch (error) {
+    console.error('Error recording patient vitals:', error);
+    throw error;
+  }
+};

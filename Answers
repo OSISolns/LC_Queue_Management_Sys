@@ -1,0 +1,25 @@
+
+Please find the update below:
+----------------------------
+A/ 1.Call Center Lines Reduction
+I reviewed the current call center configuration. The way the system is set up, when there are no agents connected, inbound calls automatically queue to the one available agent who is connected, meaning the line does not go offline or show as busy.
+Regarding reducing the lines from 9 to 4:
+Our current MTN SIP service has the capacity to receive up to 30 simultaneous inbound calls. The only feasible way to limit the lines to 4 concurrent calls would be to formally request MTN to reduce the allowed simultaneous inbound calls to 4. In that case, only 4 calls would queue at the same time.
+Please confirm if you would like me to proceed with MTN on this.
+
+R/ Hamza said that he doensn't know much about it and shared a contact number of someone who set the IP Telephony service (SIP)
+Callcenter support contacts: 0788310023
+
+A/ 2.Valery Access
+If you saw my email response, I already shared the required details and access credentials with Valery. He currently has access.
+
+R/ I have access to the test env.
+
+A/ 3.CCTV Recording Storage Proposal
+For the CCTV recording upgrade, the recommended option is:
+18TB storage drive – 750,000 RWF per unit
+We would require 2 units
+Total storage required: 36TB
+Please let me know if you would like me to prepare a formal quotation document.
+
+R/ My solution... to be shared shortly.

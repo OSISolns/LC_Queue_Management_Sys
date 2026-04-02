@@ -441,7 +441,7 @@ def get_roster_summary(db: Session, roster_day_id: int):
             "shift_end_time": a.shift_end_time,
             "shift_label": a.shift_label,
             "phone": a.phone,
-            "room_number": user.room_number if user else None
+            "room_number": a.room_number or (user.room_number if user else None)
         })
 
     # Convert to schema shape

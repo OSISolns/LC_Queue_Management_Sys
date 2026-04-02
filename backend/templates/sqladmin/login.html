@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Login – Legacy Clinics</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: url('/static/bg.jpg') center/cover no-repeat fixed;
+        }
+
+        /* Blue tint overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg,
+                    rgba(4, 55, 122, 0.82) 0%,
+                    rgba(6, 85, 144, 0.78) 50%,
+                    rgba(3, 30, 80, 0.88) 100%);
+            z-index: 0;
+        }
+
+        /* Frosted white glass card */
+        .card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 360px;
+            padding: 2.5rem 2rem;
+            border-radius: 1.5rem;
+            background: #FFFDFA;
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+            border: 1px solid rgba(255, 253, 250, 0.9);
+            box-shadow: 0 32px 64px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 253, 250, 0.6);
+            overflow: hidden;
+        }
+
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-120%) rotate(25deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            60% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateX(220%) rotate(25deg);
+                opacity: 0;
+            }
+        }
+
+        .card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(110deg,
+                    transparent 30%,
+                    rgba(255, 255, 255, 0.55) 50%,
+                    transparent 70%);
+            width: 60%;
+            height: 100%;
+            animation: shimmer 4s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        .logo-wrap {
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+
+        .logo-wrap img {
+            height: 64px;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.25));
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: 900;
+            color: #1e293b;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.25rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #64748b;
+            font-weight: 500;
+            margin-bottom: 1.75rem;
+        }
+
+        /* Error banner */
+        .error-banner {
+            background: rgba(220, 38, 38, 0.20);
+            border: 1px solid rgba(252, 165, 165, 0.35);
+            color: #fca5a5;
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.65rem;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 0.4rem;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #1e293b;
+            font-size: 0.875rem;
+            font-weight: 500;
+            outline: none;
+            transition: border 0.2s, background 0.2s;
+            margin-bottom: 1rem;
+        }
+
+        input::placeholder {
+            color: #94a3b8;
+        }
+
+        input:focus {
+            border-color: #065590;
+            background: #fff;
+        }
+
+        button[type="submit"] {
+            width: 100%;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 0.75rem;
+            background: linear-gradient(135deg, #64af45 0%, #52a036 100%);
+            box-shadow: 0 8px 24px rgba(100, 175, 69, 0.40);
+            color: #fff;
+            font-size: 0.875rem;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: box-shadow 0.2s, transform 0.1s;
+            margin-top: 0.25rem;
+        }
+
+        button[type="submit"]:hover {
+            box-shadow: 0 12px 32px rgba(100, 175, 69, 0.60);
+        }
+
+        button[type="submit"]:active {
+            transform: scale(0.98);
+        }
+
+        .footer-label {
+            text-align: center;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #94a3b8;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="logo-wrap">
+            <img src="/static/logo.png" alt="Legacy Clinics" />
+        </div>
+        <h1>Admin Portal</h1>
+        <p class="subtitle">Sign in to manage the system</p>
+
+        {% if error %}
+        <div class="error-banner">{{ error }}</div>
+        {% endif %}
+
+        <form action="{{ url_for('admin:login') }}" method="POST" autocomplete="off">
+            <label>Username</label>
+            <input name="username" type="text" placeholder="username" autocomplete="off" required />
+
+            <label>Password</label>
+            <input name="password" type="password" placeholder="••••••••" autocomplete="off" required />
+
+            <button type="submit">Sign In</button>
+        </form>
+
+        <p class="footer-label">Legacy Clinics &mdash; Admin Access</p>
+    </div>
+</body>
+
+</html>

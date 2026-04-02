@@ -25,3 +25,16 @@ services:
       - ./ai_service/models_store:/app/ai_service/models_store
     environment:
       - DATABASE_URL=sqlite:////app/queue.db
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - /app/node_modules
+    depends_on:
+      - qms-api

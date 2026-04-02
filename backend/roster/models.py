@@ -49,6 +49,7 @@ class RosterAssignment(Base):
     shift_end_time = Column(Time, nullable=False)
     shift_label = Column(String, nullable=False)
     phone = Column(String, nullable=True)
+    room_number = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 

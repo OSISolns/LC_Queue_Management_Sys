@@ -6,7 +6,10 @@ import Display from './pages/Display'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
 import SMSOfficer from './pages/SMSOfficer'
-import { Lock, Monitor, Baby, Smartphone, Stethoscope, Wrench, Settings, MessageSquare, LogOut } from 'lucide-react'
+import FileHubDashboard from './pages/FileHubDashboard'
+import AdminFileManager from './pages/AdminFileManager'
+import QualityDashboard from './pages/QualityDashboard'
+import { Lock, Monitor, Baby, Smartphone, Stethoscope, Wrench, Settings, MessageSquare, LogOut, FileText, ShieldCheck } from 'lucide-react'
 
 function RequireAuth({ children, role }) {
   const { user, loading } = useAuth();
@@ -58,6 +61,26 @@ function App() {
           <Route path="/sms" element={
             <RequireAuth role="SMS Officer">
               <SMSOfficer />
+            </RequireAuth>
+          } />
+
+          {/* File Hub Routes */}
+          <Route path="/files" element={
+            <RequireAuth role={['Doctor', 'Technician', 'Nurse', 'Admin', 'Helpdesk']}>
+              <FileHubDashboard />
+            </RequireAuth>
+          } />
+
+          <Route path="/admin/files" element={
+            <RequireAuth role="Admin">
+              <AdminFileManager />
+            </RequireAuth>
+          } />
+
+          {/* Quality Dashboard Route */}
+          <Route path="/quality" element={
+            <RequireAuth role={['Quality', 'Admin']}>
+              <QualityDashboard />
             </RequireAuth>
           } />
         </Routes>
@@ -119,11 +142,11 @@ function Home() {
             </>
           ) : (
             <>
-              {(user.role === 'Helpdesk' || user.role === 'Admin') && (
+              {user.role === 'Helpdesk' && (
                 <Card to="/kiosk" title="Kiosk Station" desc="Patient Self-Registration" icon={<Smartphone size={36} className="text-[#065590]" />} />
               )}
 
-              {(user.role === 'Doctor' || user.role === 'Technician' || user.role === 'Admin') && (
+              {(user.role === 'Doctor' || user.role === 'Technician') && (
                 <Card to="/dashboard"
                   title={user.role === 'Technician' ? 'Technician Dashboard' : 'Doctor Dashboard'}
                   desc="Manage your patient queue"
@@ -135,8 +158,20 @@ function Home() {
                 <Card to="/admin" title="System Admin" desc="Manage users, rooms & settings" icon={<Settings size={36} className="text-amber-700" />} bg="bg-amber-50" />
               )}
 
-              {(user.role === 'SMS Officer' || user.role === 'Admin') && (
+              {user.role === 'SMS Officer' && (
                 <Card to="/sms" title="SMS Communications" desc="Send notifications to patients" icon={<MessageSquare size={36} className="text-blue-600" />} bg="bg-blue-50" />
+              )}
+
+              {user.role === 'Quality' && (
+                <Card to="/quality" title="Quality Dashboard" desc="Monitor compliance and stats" icon={<ShieldCheck size={36} className="text-emerald-600" />} bg="bg-emerald-50" />
+              )}
+
+              {user.role !== 'Admin' && (
+                <Card to="/files" title="Document Hub" desc="Access secure organization files" icon={<FileText size={36} className="text-emerald-600" />} bg="bg-white" />
+              )}
+
+              {user.role === 'Admin' && (
+                <Card to="/admin/files" title="Admin File Manager" desc="Upload and share secure files" icon={<FileText size={36} className="text-[#065590]" />} bg="bg-blue-50 hover:bg-blue-100" />
               )}
 
               <Card to="/display?floor=ground" title="Ground Floor" desc="Public Display Screen" icon={<Monitor size={36} className="text-emerald-700" />} bg="bg-emerald-50" />

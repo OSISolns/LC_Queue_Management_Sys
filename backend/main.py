@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, File, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, case, or_, desc
 import socketio
 from typing import List, Optional
+from pydantic import BaseModel
 from datetime import datetime, timedelta
 from docx import Document
 from docx.shared import Inches, Pt
@@ -13,8 +14,16 @@ from io import BytesIO, StringIO
 from fastapi.responses import StreamingResponse
 from . import models, schemas, database
 from .ai_client import ai_client
+from . import session_manager
+from .routers import files, patient_portal
+from .dependencies import (
+    get_db, get_current_user, get_current_user_optional, 
+    get_current_active_user, get_admin_user, get_sms_officer_user,
+    oauth2_scheme, oauth2_scheme_optional, SECRET_KEY, ALGORITHM
+)
 import edge_tts
 import uuid
+import shutil
 import os
 import json
 import csv
@@ -25,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import hashlib
 from dotenv import load_dotenv
 import logging
+logger = logging.getLogger(__name__)
 
 # SQLAdmin Imports
 from sqladmin import Admin, ModelView, BaseView, expose
@@ -63,6 +73,8 @@ app.add_middleware(
 )
 
 socket_app = socketio.ASGIApp(sio, app)
+app.include_router(files.router)
+app.include_router(patient_portal.router)
 
 # --- SMS Helper ---
 
@@ -105,57 +117,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 # --- Dependencies ---
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = schemas.TokenData(username=username, role=payload.get("role"))
-    except JWTError:
-        raise credentials_exception
-    user = db.query(models.User).options(joinedload(models.User.role)).filter(models.User.username == token_data.username).first()
-    if user is None:
-        raise credentials_exception
-    return user
-
-async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)):
-    if not token:
-        return None
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        token_data = schemas.TokenData(username=username, role=payload.get("role"))
-    except JWTError:
-        return None
-        
-    user = db.query(models.User).options(joinedload(models.User.role)).filter(models.User.username == token_data.username).first()
-    return user
-
-async def get_current_active_user(current_user: models.User = Depends(get_current_user)):
-    if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
-
-async def get_admin_user(current_user: models.User = Depends(get_current_active_user)):
-    if current_user.role.category != "Admin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    return current_user
-
 async def get_sms_officer_user(current_user: models.User = Depends(get_current_active_user)):
     """Allow both Admin and SMS Officer roles to access SMS features"""
     if current_user.role.category not in ["Admin", "SMS Officer"]:
@@ -181,17 +142,21 @@ def startup_event():
     
     # Seed Roles
     roles = [
-        {"id": 1, "name": "Admin"},
-        {"id": 2, "name": "Doctor"},
-        {"id": 3, "name": "Helpdesk"},
-        {"id": 4, "name": "Technician"},
-        {"id": 5, "name": "SMS Officer"},
-        {"id": 6, "name": "Nurse"},
+        {"id": 1, "name": "Admin", "category": "Admin"},
+        {"id": 2, "name": "Doctor", "category": "Doctor"},
+        {"id": 3, "name": "Helpdesk", "category": "Helpdesk"},
+        {"id": 4, "name": "Technician", "category": "Technician"},
+        {"id": 5, "name": "SMS Officer", "category": "SMS Officer"},
+        {"id": 6, "name": "Nurse", "category": "Nurse"},
+        {"id": 100, "name": "Quality", "category": "Quality"},
     ]
     for r in roles:
-        exists = db.query(models.Role).filter_by(id=r["id"]).first()
-        if not exists:
+        role = db.query(models.Role).filter_by(id=r["id"]).first()
+        if not role:
             db.add(models.Role(**r))
+        elif not role.category:
+            role.category = r["category"]
+            db.add(role)
             
     db.commit()
 
@@ -207,6 +172,11 @@ def startup_event():
 
     # Check Queue Expiration (Auto-Clear after 10 PM)
     check_and_expire_queue(db)
+
+    # Clean up idle/stale sessions from previous server runs
+    removed = session_manager.cleanup_old_sessions(db)
+    if removed:
+        print(f"[SESSION] Cleaned up {removed} stale session(s) on startup.")
 
     db.close()
 
@@ -269,6 +239,9 @@ async def login_for_access_token(request: Request, form_data: schemas.LoginReque
         access_token = create_access_token(
             data={"sub": user.username, "role": role_category}, expires_delta=access_token_expires
         )
+
+        # Register server-side session for idle timeout tracking
+        session_manager.create_session(db, access_token, user.id)
         
         return {
             "access_token": access_token, 
@@ -293,6 +266,24 @@ async def login_for_access_token(request: Request, form_data: schemas.LoginReque
             detail=f"Internal server error: {str(e)}"
         )
 
+@app.post("/logout")
+async def logout(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """Immediately invalidate the server-side session so the token can no longer be used."""
+    session_manager.delete_session(db, token)
+    return {"message": "Logged out successfully"}
+
+@app.get("/users", response_model=List[schemas.User])
+def get_users(role_name: Optional[str] = None, db: Session = Depends(get_db)):
+    """Fetch users, optionally filtered by role name (e.g., 'Nurse', 'Doctor')"""
+    query = db.query(models.User)
+    if role_name:
+        query = query.join(models.Role).filter(models.Role.name == role_name)
+    return query.all()
+
+
 # --- Queue Routes ---
 
 @app.get("/announce")
@@ -312,6 +303,19 @@ async def announce(token: str, room: Optional[str] = None, background_tasks: Bac
     return FileResponse(output_file, media_type="audio/mpeg")
 
 
+@app.get("/sync-hims")
+async def sync_hims_patients(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Trigger manual sync from external Sukraa HIMS in the background"""
+    from .sync_sukraa import sync_patients
+    background_tasks.add_task(sync_patients)
+    return {"status": "success", "message": "Synchronization started in the background"}
+
+
+@app.get("/patients-all", response_model=List[schemas.PatientResponse])
+def get_all_patients(skip: int = 0, limit: int = 10000, db: Session = Depends(get_db)):
+    """List all registered patients"""
+    return db.query(models.Patient).offset(skip).limit(limit).all()
+
 @app.get("/patients/search", response_model=List[schemas.PatientResponse])
 def search_patients(q: str, limit: int = 5, db: Session = Depends(get_db)):
     """Search patients by name or MRN"""
@@ -321,6 +325,16 @@ def search_patients(q: str, limit: int = 5, db: Session = Depends(get_db)):
         (models.Patient.mrn.ilike(f"%{q}%"))
     )
     return query.limit(limit).all()
+
+
+@app.get("/patients/{patient_id}", response_model=schemas.PatientResponse)
+def get_patient_detail(patient_id: int, db: Session = Depends(get_db)):
+    """Get full patient details by ID"""
+    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient
+
 
 @app.post("/register", response_model=schemas.QueueResponse)
 async def register_patient(
@@ -420,6 +434,23 @@ async def register_patient(
         visit_type=patient.visit_type,
         status="waiting"
     )
+
+    # --- AI Integration: Auto-Select Doctor/Room ---
+    if not new_patient.doctor_id and (new_patient.visit_type in ["consultation", "review", "Consultation", "Review"]):
+        try:
+            recommendation = await ai_client.get_counter_recommendation(
+                service_type=new_patient.visit_type,
+                priority_id=new_patient.priority_id
+            )
+            if recommendation and "recommended_doctor_id" in recommendation:
+                new_patient.doctor_id = recommendation["recommended_doctor_id"]
+                if not new_patient.target_room:
+                    new_patient.target_room = recommendation["recommended_counter_id"]
+                logger.info(f"AI Auto-selected Doctor ID {new_patient.doctor_id} for Token {token}")
+        except Exception as e:
+            logger.error(f"AI Auto-selection failed: {e}")
+    # ---------------------------------------------
+
     db.add(new_patient)
     db.commit()
     db.refresh(new_patient)
@@ -449,8 +480,7 @@ async def register_patient(
         })
         db.commit()
     except Exception as e:
-        import logging
-        logging.error(f"Failed to record AI wait time prediction: {e}")
+        logger.error(f"Failed to record AI wait time prediction: {e}")
     # -----------------------------------------
     
     # Send SMS notification if phone number is provided
@@ -707,6 +737,26 @@ async def recall_patient(patient_id: int, db: Session = Depends(get_db)):
     })
     
     return {"message": "Patient recalled"}
+
+class DoctorNotesRequest(BaseModel):
+    notes: str
+
+@app.post("/queue/{queue_id}/notes")
+async def save_doctor_notes(
+    queue_id: int,
+    body: DoctorNotesRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Save or update doctor's consultation notes. Only allowed while serving or after completion."""
+    entry = db.query(models.Queue).filter(models.Queue.id == queue_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+    if entry.status == "waiting":
+        raise HTTPException(status_code=403, detail="Cannot add notes before the patient is being served")
+    entry.doctor_notes = body.notes.strip()
+    db.commit()
+    return {"message": "Notes saved", "doctor_notes": entry.doctor_notes}
 
 @app.get("/stats")
 def get_statistics(db: Session = Depends(get_db)):
@@ -1602,8 +1652,9 @@ class DepartmentAdmin(ModelView, model=models.Department):
     category = "Hospital Resources"
 
 class RoomAdmin(ModelView, model=models.Room):
-    column_list = [models.Room.id, models.Room.name, models.Room.department, models.Room.floor]
+    column_list = [models.Room.id, models.Room.name, models.Room.department, models.Room.floor, models.Room.extension]
     column_sortable_list = [models.Room.id, models.Room.name, models.Room.floor]
+    column_searchable_list = [models.Room.name, models.Room.extension]
     icon = "fa-solid fa-door-open"
     can_export = True
     category = "Hospital Resources"
@@ -1621,7 +1672,7 @@ class PatientAdmin(ModelView, model=models.Patient):
     category = "Medical Records"
 
 class QueueAdmin(ModelView, model=models.Queue):
-    column_list = [models.Queue.token_number, models.Queue.patient_name, models.Queue.priority, models.Queue.status, models.Queue.target_dept, models.Queue.doctor, models.Queue.room_number, "duration"]
+    column_list = [models.Queue.token_number, models.Queue.patient_name, models.Queue.priority, models.Queue.status, models.Queue.target_dept, models.Queue.doctor, models.Queue.room_number, models.Queue.doctor_notes, "duration"]
     column_sortable_list = [models.Queue.created_at]
     icon = "fa-solid fa-list-ol"
     can_view_details = True
@@ -1638,11 +1689,17 @@ class QueueAdmin(ModelView, model=models.Queue):
         return "-"
 
 class VisitHistoryAdmin(ModelView, model=models.VisitHistory):
-    column_list = [models.VisitHistory.visit_date, models.VisitHistory.patient, models.VisitHistory.doctor, models.VisitHistory.status]
+    column_list = [models.VisitHistory.visit_date, models.VisitHistory.patient, models.VisitHistory.doctor, models.VisitHistory.status, models.VisitHistory.doctor_notes]
     column_sortable_list = [models.VisitHistory.visit_date, models.VisitHistory.status]
     icon = "fa-solid fa-file-medical"
     can_view_details = True
     category = "Medical Records"
+
+class PatientVitalsAdmin(ModelView, model=models.PatientVitals):
+    name = "Triage / Vitals"
+    icon = "fa-solid fa-heart-pulse"
+    category = "Medical Records"
+    column_list = [models.PatientVitals.id, models.PatientVitals.patient_id, models.PatientVitals.temperature, models.PatientVitals.blood_pressure, models.PatientVitals.recorded_at]
 
 class PriorityLevelAdmin(ModelView, model=models.PriorityLevel):
     column_list = [models.PriorityLevel.name, models.PriorityLevel.weight]
@@ -1667,6 +1724,16 @@ class LCAdmin(Admin):
             
             # Active staff query
             active_staff = db.query(models.User).filter(models.User.is_active == True).count()
+
+            # Extra stats — patients, SMS, files, rosters
+            total_patients = db.query(models.Patient).filter(models.Patient.is_active == True).count()
+            sms_today = db.query(models.SMSHistory).filter(
+                models.SMSHistory.sent_at >= today_start
+            ).count()
+            files_count = db.query(models.Document).filter(models.Document.is_active == True).count()
+            from backend.roster.models import RosterDay
+            active_rosters = db.query(RosterDay).filter(RosterDay.status == "published").count()
+
             
             # Live Queue (Top 5: Serving first, then Priority)
             live_queue = db.query(models.Queue).filter(
@@ -1716,9 +1783,14 @@ class LCAdmin(Admin):
             "active_visits": active_visits,
             "total_today": total_today,
             "active_staff": active_staff,
+            "total_patients": total_patients,
+            "sms_today": sms_today,
+            "files_count": files_count,
+            "active_rosters": active_rosters,
             "live_queue": live_queue,
             "doctor_status": doctor_status
         })
+
 
 
 
@@ -1924,18 +1996,437 @@ class DoctorsView(BaseView):
         return JSONResponse({"success": True, "doctor_id": doctor_id, "day": day, "status": new_status})
 
 
+# ─────────────────────────────────────────────────────────────
+# Communications Admin Views
+# ─────────────────────────────────────────────────────────────
+
+class SMSHistoryAdmin(ModelView, model=models.SMSHistory):
+    name = "SMS History"
+    name_plural = "SMS History"
+    icon = "fa-solid fa-comment-sms"
+    category = "Communications"
+    column_list = [
+        models.SMSHistory.sent_at,
+        models.SMSHistory.phone_number,
+        "patient",
+        models.SMSHistory.message_type,
+        models.SMSHistory.status,
+        "sent_by",
+    ]
+    column_sortable_list = [models.SMSHistory.sent_at, models.SMSHistory.status, models.SMSHistory.message_type]
+    column_searchable_list = [models.SMSHistory.phone_number, models.SMSHistory.message_type]
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+    can_export = True
+
+class SMSTemplateAdmin(ModelView, model=models.SMSTemplate):
+    name = "SMS Templates"
+    name_plural = "SMS Templates"
+    icon = "fa-solid fa-file-lines"
+    category = "Communications"
+    column_list = [models.SMSTemplate.type, models.SMSTemplate.description, models.SMSTemplate.template]
+    column_searchable_list = [models.SMSTemplate.type, models.SMSTemplate.description]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_view_details = True
+    can_export = True
+
+# ─────────────────────────────────────────────────────────────
+# System Admin View
+# ─────────────────────────────────────────────────────────────
+
+class SettingAdmin(ModelView, model=models.Setting):
+    name = "System Settings"
+    name_plural = "System Settings"
+    icon = "fa-solid fa-gear"
+    category = "System"
+    column_list = [models.Setting.key, models.Setting.value, models.Setting.description, models.Setting.updated_at]
+    column_sortable_list = [models.Setting.key, models.Setting.updated_at]
+    column_searchable_list = [models.Setting.key, models.Setting.description]
+    can_create = False
+    can_edit = True
+    can_delete = False
+    can_view_details = True
+    can_export = True
+
+# ─────────────────────────────────────────────────────────────
+# File Hub Admin Views
+# ─────────────────────────────────────────────────────────────
+
+class FileCategoryAdmin(ModelView, model=models.FileCategory):
+    name = "File Categories"
+    name_plural = "File Categories"
+    icon = "fa-solid fa-folder"
+    category = "File Hub"
+    column_list = [models.FileCategory.id, models.FileCategory.name, models.FileCategory.description]
+    column_searchable_list = [models.FileCategory.name]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_view_details = True
+    can_export = True
+
+class DocumentAdmin(ModelView, model=models.Document):
+    name = "Documents"
+    name_plural = "Documents"
+    icon = "fa-solid fa-file"
+    category = "File Hub"
+    column_list = [
+        models.Document.original_name,
+        "category",
+        "uploaded_by",
+        models.Document.upload_date,
+        models.Document.file_size,
+        models.Document.mime_type,
+        models.Document.is_active,
+    ]
+    column_sortable_list = [models.Document.upload_date, models.Document.file_size, models.Document.original_name]
+    column_searchable_list = [models.Document.original_name, models.Document.mime_type]
+    can_create = False
+    can_edit = True
+    can_delete = True
+    can_view_details = True
+    can_export = True
+    form_columns = [models.Document.category, models.Document.is_active]
+
+class FileAuditLogAdmin(ModelView, model=models.FileAuditLog):
+    name = "File Audit Log"
+    name_plural = "File Audit Logs"
+    icon = "fa-solid fa-shield-halved"
+    category = "File Hub"
+    column_list = [
+        models.FileAuditLog.timestamp,
+        "user",
+        "document",
+        models.FileAuditLog.action,
+        models.FileAuditLog.ip_address,
+    ]
+    column_sortable_list = [models.FileAuditLog.timestamp, models.FileAuditLog.action]
+    column_searchable_list = [models.FileAuditLog.action, models.FileAuditLog.ip_address]
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_view_details = True
+    can_export = True
+
+# ─────────────────────────────────────────────────────────────
+# Roster Admin Views
+# ─────────────────────────────────────────────────────────────
+
+from backend.roster.models import (
+    Unit, Shift, RosterDay, RosterAssignment, StaffAvailability,
+    AuditLog as RosterAuditLog,
+)
+
+class DoctorRosterAdmin(ModelView, model=models.DoctorRoster):
+    name = "Doctor Weekly Roster"
+    name_plural = "Doctor Weekly Roster"
+    icon = "fa-solid fa-calendar-check"
+    category = "Roster"
+    column_list = [
+        "doctor",
+        models.DoctorRoster.day_of_week,
+        models.DoctorRoster.status,
+        models.DoctorRoster.updated_at,
+    ]
+    column_sortable_list = [models.DoctorRoster.day_of_week, models.DoctorRoster.updated_at]
+    column_searchable_list = [models.DoctorRoster.day_of_week, models.DoctorRoster.status]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_export = True
+
+class UnitAdmin(ModelView, model=Unit):
+    name = "Units"
+    name_plural = "Units"
+    icon = "fa-solid fa-sitemap"
+    category = "Roster"
+    column_list = [Unit.id, Unit.name, "department"]
+    column_searchable_list = [Unit.name]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_export = True
+
+class ShiftAdmin(ModelView, model=Shift):
+    name = "Shifts"
+    name_plural = "Shifts"
+    icon = "fa-solid fa-clock"
+    category = "Roster"
+    column_list = [Shift.id, Shift.name, Shift.start_time, Shift.end_time]
+    column_sortable_list = [Shift.name, Shift.start_time]
+    column_searchable_list = [Shift.name]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_export = True
+
+class RosterDayAdmin(ModelView, model=RosterDay):
+    name = "Roster Days"
+    name_plural = "Roster Days"
+    icon = "fa-solid fa-calendar-days"
+    category = "Roster"
+    column_list = [RosterDay.id, RosterDay.date, "creator", RosterDay.status, RosterDay.notes]
+    column_sortable_list = [RosterDay.date, RosterDay.status]
+    column_searchable_list = [RosterDay.status]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_export = True
+    can_view_details = True
+
+class RosterAssignmentAdmin(ModelView, model=RosterAssignment):
+    name = "Roster Assignments"
+    name_plural = "Roster Assignments"
+    icon = "fa-solid fa-user-clock"
+    category = "Roster"
+    column_list = [
+        "roster_day", "staff", "department", "unit",
+        RosterAssignment.shift_label,
+        RosterAssignment.shift_start_time,
+        RosterAssignment.shift_end_time,
+        RosterAssignment.room_number,
+        RosterAssignment.phone,
+    ]
+    column_sortable_list = [RosterAssignment.shift_label, RosterAssignment.created_at]
+    column_searchable_list = [RosterAssignment.shift_label, RosterAssignment.phone, RosterAssignment.room_number]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_export = True
+    can_view_details = True
+
+class StaffAvailabilityAdmin(ModelView, model=StaffAvailability):
+    name = "Staff Availability"
+    name_plural = "Staff Availability"
+    icon = "fa-solid fa-user-check"
+    category = "Roster"
+    column_list = ["staff", StaffAvailability.date, StaffAvailability.available, StaffAvailability.reason]
+    column_sortable_list = [StaffAvailability.date, StaffAvailability.available]
+    can_create = True
+    can_edit = True
+    can_delete = True
+    can_export = True
+
+class RosterAuditLogAdmin(ModelView, model=RosterAuditLog):
+    name = "Roster Audit Log"
+    name_plural = "Roster Audit Logs"
+    icon = "fa-solid fa-list-check"
+    category = "Roster"
+    column_list = ["actor", RosterAuditLog.action, RosterAuditLog.created_at]
+    column_sortable_list = [RosterAuditLog.created_at]
+    column_searchable_list = [RosterAuditLog.action]
+    can_create = False
+    can_edit = False
+    can_delete = False
+    can_export = True
+
+# ─────────────────────────────────────────────────────────────
+# Register all views
+# ─────────────────────────────────────────────────────────────
+
 admin.add_view(AnalyticsView)
 admin.add_view(DoctorsView)
 
+# User Management
 admin.add_view(UserAdmin)
 admin.add_view(RoleAdmin)
+
+# Hospital Resources
 admin.add_view(DepartmentAdmin)
 admin.add_view(RoomAdmin)
+
+# Medical Records
 admin.add_view(PatientAdmin)
 admin.add_view(QueueAdmin)
 admin.add_view(VisitHistoryAdmin)
 admin.add_view(PriorityLevelAdmin)
 
+# Communications
+admin.add_view(SMSHistoryAdmin)
+admin.add_view(SMSTemplateAdmin)
+
+# System
+admin.add_view(SettingAdmin)
+
+# File Hub
+admin.add_view(FileCategoryAdmin)
+admin.add_view(DocumentAdmin)
+admin.add_view(FileAuditLogAdmin)
+
+# Roster
+admin.add_view(DoctorRosterAdmin)
+admin.add_view(UnitAdmin)
+admin.add_view(ShiftAdmin)
+admin.add_view(RosterDayAdmin)
+admin.add_view(RosterAssignmentAdmin)
+admin.add_view(StaffAvailabilityAdmin)
+admin.add_view(RosterAuditLogAdmin)
+admin.add_view(PatientVitalsAdmin)
+
 # Include modules at bottom to avoid circular imports
 from backend.roster.router import router as roster_router
 app.include_router(roster_router, prefix="/roster", tags=["Roster"])
+
+from backend.routers.files import router as files_router
+app.include_router(files_router, prefix="/api/files", tags=["Files"])
+
+# ==========================================
+# Nursing Portal - Observation & Medication
+# ==========================================
+
+@app.post("/patients/{patient_id}/observation-notes", response_model=schemas.ObservationNoteResponse)
+async def create_observation_note(
+    patient_id: int, 
+    note: schemas.ObservationNoteCreate, 
+    db: Session = Depends(get_db)
+):
+    # Verify patient exists
+    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    db_note = models.ObservationNote(
+        patient_id=patient_id,
+        nurse_id=note.nurse_id,
+        content=note.content
+    )
+    db.add(db_note)
+    db.commit()
+    db.refresh(db_note)
+    return db_note
+
+@app.get("/patients/{patient_id}/observation-notes", response_model=List[schemas.ObservationNoteResponse])
+async def list_observation_notes(
+    patient_id: int, 
+    db: Session = Depends(get_db)
+):
+    return db.query(models.ObservationNote).filter(models.ObservationNote.patient_id == patient_id).order_by(models.ObservationNote.created_at.desc()).all()
+
+@app.post("/patients/{patient_id}/medications", response_model=schemas.MedicationAdministrationResponse)
+async def administer_medication(
+    patient_id: int, 
+    admin: schemas.MedicationAdministrationCreate, 
+    db: Session = Depends(get_db)
+):
+    # Verify patient exists
+    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    db_admin = models.MedicationAdministration(
+        patient_id=patient_id,
+        nurse_id=admin.nurse_id,
+        medication_name=admin.medication_name,
+        dosage=admin.dosage,
+        route=admin.route,
+        notes=admin.notes
+    )
+    db.add(db_admin)
+    db.commit()
+    db.refresh(db_admin)
+    return db_admin
+
+@app.get("/patients/{patient_id}/medications", response_model=List[schemas.MedicationAdministrationResponse])
+async def list_medications(
+    patient_id: int, 
+    db: Session = Depends(get_db)
+):
+    return db.query(models.MedicationAdministration).filter(models.MedicationAdministration.patient_id == patient_id).order_by(models.MedicationAdministration.administered_at.desc()).all()
+
+
+# --- Vitals / Triage Endpoints ---
+
+@app.post("/patients/{patient_id}/vitals", response_model=schemas.PatientVitalsResponse)
+async def create_patient_vitals(
+    patient_id: int,
+    vitals: schemas.PatientVitalsBase,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Record new vitals for a patient (Triage)"""
+    # Verify patient exists
+    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    db_vitals = models.PatientVitals(
+        **vitals.dict(),
+        nurse_id=current_user.id
+    )
+    db.add(db_vitals)
+    db.commit()
+    db.refresh(db_vitals)
+    return db_vitals
+
+@app.get("/patients/{patient_id}/vitals", response_model=List[schemas.PatientVitalsResponse])
+async def list_patient_vitals(
+    patient_id: int,
+    db: Session = Depends(get_db)
+):
+    """List historical vitals for a patient"""
+    return db.query(models.PatientVitals).filter(
+        models.PatientVitals.patient_id == patient_id
+    ).order_by(models.PatientVitals.recorded_at.desc()).all()
+
+
+# ==========================================
+# Nursing Portal - Settings & Profile
+# ==========================================
+
+@app.put("/users/{user_id}/room", status_code=200)
+async def update_nurse_room(
+    user_id: int,
+    room_data: schemas.UserRoomUpdate,
+    db: Session = Depends(get_db)
+):
+    """Updates a nurse's room assignment (unprotected for demonstration)."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.room_number = room_data.room_number
+    db.commit()
+    db.refresh(user)
+    return {"message": "Room updated", "room_number": user.room_number}
+
+# ==========================================
+# Admin - Change User Picture
+# ==========================================
+
+@app.post("/users/{user_id}/profile-picture")
+async def upload_user_picture(
+    user_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Allows an administrator to change a staff member's profile picture."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Storage setup
+    upload_dir = "backend/static/uploads/profiles"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # Unique file persistence
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"user_{user_id}_{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(upload_dir, filename)
+
+    # Physical storage
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Database update
+    # Note: Using absolute URL for easy frontend rendering
+    base_url = "https://localhost:8000"
+    profile_url = f"{base_url}/static/uploads/profiles/{filename}"
+    user.profile_picture = profile_url
+    db.commit()
+    db.refresh(user)
+
+    return {"message": "Profile picture updated successfully", "profile_picture": profile_url}
