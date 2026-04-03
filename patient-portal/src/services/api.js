@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = "http://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8000/portal";
+const API_BASE = "https://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8000/portal";
 
 const api = axios.create({
   baseURL: API_BASE,

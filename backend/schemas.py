@@ -500,6 +500,8 @@ class PatientVitalsBase(BaseModel):
     spo2: Optional[str] = None
     bmi: Optional[str] = None
     notes: Optional[str] = None
+    queue_id: Optional[int] = None
+    visit_id: Optional[int] = None
 
 class PatientVitalsCreate(PatientVitalsBase):
     nurse_id: Optional[int] = None
@@ -509,6 +511,8 @@ class PatientVitalsResponse(PatientVitalsBase):
     nurse_id: Optional[int]
     nurse_name: Optional[str] = None
     recorded_at: datetime
+    queue_id: Optional[int] = None
+    visit_id: Optional[int] = None
 
     class Config:
         orm_mode = True

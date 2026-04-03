@@ -31,6 +31,9 @@ export default function Dashboard() {
     const [modalNoteText, setModalNoteText] = useState('')
     const [modalNoteSaving, setModalNoteSaving] = useState(false)
     const [modalNoteSaved, setModalNoteSaved] = useState(false)
+    const [patientVitals, setPatientVitals] = useState(null)
+    const [patientNotes, setPatientNotes] = useState([])
+    const [patientMeds, setPatientMeds] = useState([])
 
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
@@ -179,6 +182,54 @@ export default function Dashboard() {
             setNoteText('')
         }
     }, [currentPatient])
+
+    useEffect(() => {
+        const fetchClinicalData = async (patientId) => {
+            if (!patientId) {
+                setPatientVitals(null)
+                setPatientNotes([])
+                setPatientMeds([])
+                return
+            }
+            try {
+                const token = user?.token || localStorage.getItem('token')
+                const [vitalsRes, notesRes, medsRes] = await Promise.all([
+                    fetch(`${API_URL}/patients/${patientId}/vitals`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/patients/${patientId}/observation-notes`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/patients/${patientId}/medications`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ])
+                if (vitalsRes.ok) {
+                    const vitals = await vitalsRes.json()
+                    setPatientVitals(vitals.length > 0 ? vitals[vitals.length - 1] : null)
+                }
+                if (notesRes.ok) {
+                    const notes = await notesRes.json()
+                    setPatientNotes(notes)
+                }
+                if (medsRes.ok) {
+                    const meds = await medsRes.json()
+                    setPatientMeds(meds)
+                }
+            } catch (error) {
+                console.error('Failed to fetch clinical data:', error)
+            }
+        }
+        
+        const activePatient = currentPatient || selectedPatientModal;
+        if (activePatient && activePatient.patient_id) {
+            // Fetch immediately
+            fetchClinicalData(activePatient.patient_id)
+            // Then poll every 15 seconds so the doctor sees nurse updates in real time
+            const pollInterval = setInterval(() => {
+                fetchClinicalData(activePatient.patient_id)
+            }, 15000)
+            return () => clearInterval(pollInterval)
+        } else {
+            setPatientVitals(null)
+            setPatientNotes([])
+            setPatientMeds([])
+        }
+    }, [currentPatient, selectedPatientModal, user])
 
     const saveNote = async (queueId, text, { onSaving, onSaved }) => {
         onSaving(true)
@@ -372,6 +423,82 @@ export default function Dashboard() {
                                             <UserX size={20} /> No Show
                                         </button>
                                     </div>
+
+                                    {/* Clinical Data (Vitals & Nurse Notes) */}
+                                    {(patientVitals || (patientNotes && patientNotes.length > 0)) && (
+                                        <div className="mb-4 text-left bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-[#065590] mb-3 uppercase tracking-wide">
+                                                <Stethoscope size={16} /> Clinical Summary (Nursing)
+                                            </h4>
+                                            
+                                            {patientVitals && (
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                                    {patientVitals.temperature && (
+                                                        <div className="bg-white/80 p-2 rounded-lg border border-blue-50 shadow-sm flex flex-col justify-center items-center">
+                                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Temp</span>
+                                                            <span className="text-slate-800 font-black text-sm">{patientVitals.temperature}</span>
+                                                        </div>
+                                                    )}
+                                                    {patientVitals.blood_pressure && (
+                                                        <div className="bg-white/80 p-2 rounded-lg border border-blue-50 shadow-sm flex flex-col justify-center items-center">
+                                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">BP</span>
+                                                            <span className="text-slate-800 font-black text-sm">{patientVitals.blood_pressure}</span>
+                                                        </div>
+                                                    )}
+                                                    {patientVitals.heart_rate && (
+                                                        <div className="bg-white/80 p-2 rounded-lg border border-blue-50 shadow-sm flex flex-col justify-center items-center">
+                                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">HR</span>
+                                                            <span className="text-slate-800 font-black text-sm">{patientVitals.heart_rate}</span>
+                                                        </div>
+                                                    )}
+                                                    {patientVitals.spo2 && (
+                                                        <div className="bg-white/80 p-2 rounded-lg border border-blue-50 shadow-sm flex flex-col justify-center items-center">
+                                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">SpO2</span>
+                                                            <span className="text-slate-800 font-black text-sm">{patientVitals.spo2}%</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {patientVitals && (
+                                                <p className="text-[10px] text-slate-400 mt-1 font-mono italic">
+                                                    Recorded by {patientVitals.nurse_name || 'Nurse'} · {new Date(patientVitals.recorded_at + (patientVitals.recorded_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
+                                                </p>
+                                            )}
+                                            
+                                            {patientNotes && patientNotes.length > 0 && (
+                                                <div className="space-y-2 mt-3">
+                                                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">Nurse Observation Notes</span>
+                                                    {patientNotes.map(n => (
+                                                        <div key={n.id} className="bg-white border border-slate-100 p-3 rounded-xl text-sm text-slate-700 shadow-sm shadow-slate-200/50 relative pl-4 border-l-2 border-l-[#065590]/40">
+                                                            <p className="whitespace-pre-wrap">{n.content}</p>
+                                                            <span className="text-[10px] text-slate-400 mt-2 block font-mono">
+                                                                {n.nurse_name || 'Nurse'} · {new Date(n.created_at + (n.created_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            
+                                            {patientMeds && patientMeds.length > 0 && (
+                                                <div className="space-y-2 mt-3">
+                                                    <span className="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">Administered Medications</span>
+                                                    {patientMeds.map(m => (
+                                                        <div key={m.id} className="bg-emerald-50/30 border border-emerald-100 p-3 rounded-xl text-sm text-slate-700 relative pl-4 border-l-2 border-l-emerald-500/40">
+                                                            <div className="flex justify-between items-start mb-1">
+                                                                <span className="font-bold text-emerald-800">{m.medication_name}</span>
+                                                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded uppercase font-bold">{m.route}</span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-600 mb-1">{m.dosage}</p>
+                                                            {m.notes && <p className="text-xs italic text-slate-500 mb-2">"{m.notes}"</p>}
+                                                            <span className="text-[10px] text-slate-400 block font-mono">
+                                                                {m.nurse_name || 'Nurse'} · {new Date(m.administered_at + (m.administered_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* Doctor Notes */}
                                     <div className="mb-4 text-left">
@@ -635,6 +762,82 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Modal Clinical Data (Vitals & Nurse Notes) */}
+                            {(patientVitals || (patientNotes && patientNotes.length > 0)) && (
+                                <div className="border-t border-slate-100 pt-4">
+                                    <h4 className="flex items-center gap-2 text-sm font-bold text-[#065590] mb-3 uppercase tracking-wide">
+                                        <Stethoscope size={16} /> Clinical Summary (Nursing)
+                                    </h4>
+                                    
+                                    {patientVitals && (
+                                        <div className="grid grid-cols-4 gap-2 mb-4">
+                                            {patientVitals.temperature && (
+                                                <div className="bg-[#065590]/5 p-2 rounded-lg border border-[#065590]/10 flex flex-col justify-center items-center">
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">Temp</span>
+                                                    <span className="text-[#065590] font-black text-sm">{patientVitals.temperature}</span>
+                                                </div>
+                                            )}
+                                            {patientVitals.blood_pressure && (
+                                                <div className="bg-[#065590]/5 p-2 rounded-lg border border-[#065590]/10 flex flex-col justify-center items-center">
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">BP</span>
+                                                    <span className="text-[#065590] font-black text-sm">{patientVitals.blood_pressure}</span>
+                                                </div>
+                                            )}
+                                            {patientVitals.heart_rate && (
+                                                <div className="bg-[#065590]/5 p-2 rounded-lg border border-[#065590]/10 flex flex-col justify-center items-center">
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">HR</span>
+                                                    <span className="text-[#065590] font-black text-sm">{patientVitals.heart_rate}</span>
+                                                </div>
+                                            )}
+                                            {patientVitals.spo2 && (
+                                                <div className="bg-[#065590]/5 p-2 rounded-lg border border-[#065590]/10 flex flex-col justify-center items-center">
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-0.5">SpO2</span>
+                                                    <span className="text-[#065590] font-black text-sm">{patientVitals.spo2}%</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {patientVitals && (
+                                        <p className="text-[10px] text-slate-400 mb-3 font-mono italic">
+                                            Recorded by {patientVitals.nurse_name || 'Nurse'} · {new Date(patientVitals.recorded_at + (patientVitals.recorded_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
+                                        </p>
+                                    )}
+                                    
+                                    {patientNotes && patientNotes.length > 0 && (
+                                        <div className="space-y-2 mb-3">
+                                            <span className="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">Nurse Observation Notes</span>
+                                            {patientNotes.map(n => (
+                                                <div key={n.id} className="bg-slate-50 border border-slate-100 p-3 rounded-lg text-sm text-slate-700 relative pl-4 border-l-2 border-l-[#065590]/40">
+                                                    <p className="whitespace-pre-wrap">{n.content}</p>
+                                                    <span className="text-[10px] text-slate-400 mt-1 block font-mono">
+                                                        {n.nurse_name || 'Nurse'} · {new Date(n.created_at + (n.created_at.endsWith('Z') ? '' : 'Z')).toLocaleDateString()} {new Date(n.created_at + (n.created_at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {patientMeds && patientMeds.length > 0 && (
+                                        <div className="space-y-2 mb-3">
+                                            <span className="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">Administered Medications</span>
+                                            {patientMeds.map(m => (
+                                                <div key={m.id} className="bg-emerald-50/50 border border-emerald-100 p-3 rounded-lg text-sm text-slate-700 relative pl-4 border-l-2 border-l-emerald-500/40">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <span className="font-bold text-emerald-800">{m.medication_name}</span>
+                                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded min-w-[30px] text-center">{m.route}</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-600 mb-1">{m.dosage}</p>
+                                                    {m.notes && <p className="text-xs italic text-slate-500 mb-1">"{m.notes}"</p>}
+                                                    <span className="text-[10px] text-slate-400 block font-mono">
+                                                        {m.nurse_name || 'Nurse'} · {new Date(m.administered_at + (m.administered_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Notes section – shown for completed/serving/no-show only */}
                             {selectedPatientModal.status !== 'waiting' && (

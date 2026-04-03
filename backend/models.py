@@ -446,12 +446,18 @@ class PatientVitals(Base):
     spo2 = Column(String, nullable=True)           # %
     bmi = Column(String, nullable=True)
     
+    # Links to associate vitals with a specific visit/token
+    queue_id = Column(Integer, ForeignKey("queue.id"), nullable=True)
+    visit_id = Column(Integer, ForeignKey("visit_history.id"), nullable=True)
+    
     notes = Column(Text, nullable=True)
     recorded_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     patient = relationship("Patient")
     nurse = relationship("User")
+    queue_entry = relationship("Queue")
+    visit_history = relationship("VisitHistory")
 
     @property
     def nurse_name(self):

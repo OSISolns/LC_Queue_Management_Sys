@@ -42,7 +42,7 @@ sleep 3
 
 # Start AI Service
 echo "🚀 Starting AI service..."
-uvicorn ai_service.main:app --host 0.0.0.0 --port 8001 --reload &
+uvicorn ai_service.main:app --host 0.0.0.0 --port 8001 --reload --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem &
 AI_PID=$!
 echo "✅ AI Service running (PID: $AI_PID)"
 echo ""
@@ -75,17 +75,17 @@ echo "=========================================="
 echo ""
 echo "📍 Access Points:"
 echo "   Backend:        https://localhost:8000"
-echo "   AI Service:     http://localhost:8001"
+echo "   AI Service:     https://localhost:8001"
 echo "   Frontend:       https://localhost:5173"
-echo "   Patient Portal: http://localhost:5174"
-echo "   Nursing Portal: http://localhost:5175"
+echo "   Patient Portal: https://localhost:5174"
+echo "   Nursing Portal: https://localhost:5175"
 echo ""
 echo "🏥 Interfaces:"
 echo "   Kiosk:          https://localhost:5173/kiosk"
 echo "   Dashboard:      https://localhost:5173/dashboard"
 echo "   Display:        https://localhost:5173/display"
-echo "   Patient Portal: http://localhost:5174"
-echo "   Nursing Portal: http://localhost:5175"
+echo "   Patient Portal: https://localhost:5174"
+echo "   Nursing Portal: https://localhost:5175"
 echo ""
 echo "⌨️  Press Ctrl+C to stop all servers"
 echo "=========================================="

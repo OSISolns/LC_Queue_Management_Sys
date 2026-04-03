@@ -1,4 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import os
+
+file_path = "/home/noble/Documents/LC_APPS/LC_Queuing-Sys/patient-portal/src/pages/Doctors.jsx"
+
+content = """import React, { useState, useEffect } from 'react';
 import { Star, MapPin, Calendar, Clock, MessageSquare, ShieldCheck, ChevronRight, Phone, Mail, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -215,3 +219,9 @@ const Doctors = () => {
 };
 
 export default Doctors;
+"""
+
+with open(file_path, "w") as f:
+    f.write(content)
+
+print("Updated Doctors.jsx to fetch dynamically from API.")

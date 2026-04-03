@@ -17,7 +17,9 @@ import {
   updateUserRoom,
   uploadUserProfilePicture,
   fetchPatientVitals,
-  recordPatientVitals
+  recordPatientVitals,
+  analyzeVitalsAI,
+  checkAllergyAI
 } from './services/api';
 import {
   HeartPulse,
@@ -187,13 +189,25 @@ export default function App() {
 
   const handleVitalsSubmit = async () => {
     if (!selectedPatient) return;
+    // Require at least one vital to be filled in
+    const hasAnyVital = Object.entries(vitalsForm).some(([k, v]) => k !== 'notes' && v && v.trim() !== '');
+    if (!hasAnyVital) {
+      alert('Please enter at least one vital sign before saving.');
+      return;
+    }
     try {
       setSavingAction(true);
+      // Compute BMI from the form values here (not from JSX)
       const bmiVal = calculateBMI(vitalsForm.weight, vitalsForm.height);
+      // Find if this patient is currently in the queue to link the vitals to this visit session
+      const activeQueueEntry = queue.find(q => (q.patient_id === selectedPatient.id || (q.patient_name === `${selectedPatient.first_name} ${selectedPatient.last_name}`)) && q.status !== 'completed');
+      
       const res = await recordPatientVitals(selectedPatient.id, {
          ...vitalsForm,
          bmi: bmiVal,
-         patient_id: selectedPatient.id
+         patient_id: selectedPatient.id,
+         nurse_id: currentUser?.id,
+         queue_id: activeQueueEntry?.id
       });
       setPatientVitals([res, ...patientVitals]);
       setVitalsForm({
@@ -202,6 +216,18 @@ export default function App() {
         respiratory_rate: '', spo2: '', notes: ''
       });
       alert("Triage/Vitals recorded successfully!");
+      
+      // Perform AI Analysis on the new vitals
+      const aiResult = await analyzeVitalsAI(vitalsForm, patientVitals);
+      if (aiResult && aiResult.is_problematic) {
+        let aiMsg = "🚨 AI CLINICAL ALERT\n\n";
+        aiMsg += aiResult.alerts.map(a => `• ${a}`).join("\n");
+        if (aiResult.findings.length > 0) {
+          aiMsg += "\n\n🔍 HISTORICAL CONTEXT:\n" + aiResult.findings.map(f => `• ${f}`).join("\n");
+        }
+        aiMsg += "\n\nRecommendation: " + aiResult.recommendation;
+        alert(aiMsg);
+      }
     } catch (err) {
       console.error("Failed to record vitals", err);
     } finally {
@@ -252,6 +278,16 @@ export default function App() {
     if (!newMed.medication_name || !selectedPatient) return;
     setSavingAction(true);
     try {
+      // Check for Allergy Risks via AI
+      const allergyResult = await checkAllergyAI(newMed.medication_name, selectedPatient?.allergies);
+      if (allergyResult && (allergyResult.risk === 'high' || allergyResult.risk === 'moderate')) {
+        const proceed = window.confirm(`${allergyResult.warning}\n\nDo you want to override this warning and proceed?`);
+        if (!proceed) {
+           setSavingAction(false);
+           return;
+        }
+      }
+
       const savedMed = await administerMedication(selectedPatient.id, {
         ...newMed,
         nurse_id: currentUser?.id
@@ -1132,23 +1168,39 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="records-list">
-                           {patientVitals.map(v => (
-                              <div key={v.id} className="record-item triage-card">
-                                 <div className="record-header">
-                                    <span className="record-nurse">{v.nurse_name}</span>
-                                    <span className="record-date">{new Date(v.recorded_at).toLocaleString()}</span>
+                        <div className="records-list grouped-vitals">
+                           {patientVitals.length === 0 ? (
+                             <p className="muted-text">No triage records found for this patient.</p>
+                           ) : (
+                             Object.entries(patientVitals.reduce((groups, v) => {
+                               const date = new Date(v.recorded_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+                               if (!groups[date]) groups[date] = [];
+                               groups[date].push(v);
+                               return groups;
+                             }, {})).map(([date, vitals]) => (
+                               <div key={date} className="vitals-date-group">
+                                 <div className="vitals-group-header">
+                                   <CalendarDays size={14} />
+                                   <span>{date}</span>
                                  </div>
-                                 <div className="vitals-summary-grid">
-                                    <div className="v-summary-item">BP: <strong>{v.blood_pressure || '--'}</strong></div>
-                                    <div className="v-summary-item">Temp: <strong>{v.temperature}°C</strong></div>
-                                    <div className="v-summary-item">SpO2: <strong>{v.spo2}%</strong></div>
-                                    <div className="v-summary-item">BMI: <strong>{v.bmi || '--'}</strong></div>
-                                    <div className="v-summary-item">HR: <strong>{v.heart_rate || '--'}</strong></div>
-                                 </div>
-                              </div>
-                           ))}
-                           {patientVitals.length === 0 && <p className="muted-text">No triage records found for this patient.</p>}
+                                 {vitals.map(v => (
+                                   <div key={v.id} className="record-item triage-card shadow-sm">
+                                      <div className="record-header">
+                                         <span className="record-nurse">{v.nurse_name}</span>
+                                         <span className="record-time">{new Date(v.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                      </div>
+                                      <div className="vitals-summary-grid">
+                                         <div className="v-summary-item">BP: <strong>{v.blood_pressure || '--'}</strong></div>
+                                         <div className="v-summary-item">Temp: <strong>{v.temperature}°C</strong></div>
+                                         <div className="v-summary-item">SpO2: <strong>{v.spo2}%</strong></div>
+                                         <div className="v-summary-item">BMI: <strong>{v.bmi || '--'}</strong></div>
+                                         <div className="v-summary-item">HR: <strong>{v.heart_rate || '--'}</strong></div>
+                                      </div>
+                                   </div>
+                                 ))}
+                               </div>
+                             ))
+                           )}
                         </div>
                       </motion.div>
                     )}
@@ -1161,23 +1213,45 @@ export default function App() {
                             <p className="muted-text">No previous visits recorded.</p>
                           ) : (
                             patientHistory.map(visit => (
-                              <div key={visit.id} className="history-item-large">
-                                <div className="h-header">
-                                  <span className="h-date">{new Date(visit.visit_date).toLocaleDateString()}</span>
-                                  <span className="visit-type-badge">{visit.visit_type}</span>
-                                  <span className="dept-name">{visit.department}</span>
-                                </div>
-                                <div className="h-body">
-                                  <div className="h-entry">
-                                    <label>Diagnosis</label>
-                                    <p>{visit.diagnosis || 'N/A'}</p>
+                                <div key={visit.id} className="history-item-large shadow-sm">
+                                  <div className="h-header">
+                                    <div className="h-date-group">
+                                      <CalendarDays size={14}/>
+                                      <span className="h-date">{new Date(visit.visit_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                    </div>
+                                    <span className="visit-type-badge">{visit.visit_type}</span>
+                                    <span className="dept-name">{visit.department}</span>
                                   </div>
-                                  <div className="h-entry">
-                                    <label>Prescription</label>
-                                    <p>{visit.prescription || 'N/A'}</p>
+                                  <div className="h-body">
+                                    <div className="h-entry-row">
+                                      <div className="h-entry">
+                                        <label>Diagnosis</label>
+                                        <p>{visit.diagnosis || 'No diagnosis recorded'}</p>
+                                      </div>
+                                      <div className="h-entry">
+                                        <label>Prescription</label>
+                                        <p>{visit.prescription || 'No prescription recorded'}</p>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Link and display vitals for this visit if they exist */}
+                                    {patientVitals.filter(v => v.visit_id === visit.id).length > 0 && (
+                                      <div className="h-entry-vitals-inline">
+                                        <label>Triaged Vitals for this visit:</label>
+                                        <div className="v-pills-container">
+                                          {patientVitals.filter(v => v.visit_id === visit.id).map(v => (
+                                            <div key={v.id} className="v-pill-micro">
+                                              <span>{v.temperature}°C</span>
+                                              <span>{v.blood_pressure} BP</span>
+                                              <span>{v.heart_rate} HR</span>
+                                              <span>{v.spo2}% SpO2</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
-                              </div>
                             ))
                           )}
                         </div>

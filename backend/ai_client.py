@@ -13,7 +13,7 @@ ai_cache = TTLCache(maxsize=1000, ttl=60) # 60 seconds
 
 # In a real deployed environment, AI_SERVICE_URL would come from ENV vars or config
 # Updated to point to the docker-compose service name by default
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://127.0.0.1:8001/api/v1")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "https://127.0.0.1:8001/api/v1")
 
 class QMSAIClient:
     """Client for interacting with the separate qms-ai-service."""
@@ -55,7 +55,7 @@ class QMSAIClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
                 resp = await client.post(f"{self.base_url}/predict/wait_time", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -77,7 +77,7 @@ class QMSAIClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:
                 resp = await client.post(f"{self.base_url}/recommend/counter", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -108,7 +108,7 @@ class QMSAIClient:
         """Call the AI service to generate roster insights for the given period."""
         period = payload.get("period", "unknown")
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
                 resp = await client.post(f"{self.base_url}/reports/roster_insights", json=payload)
                 resp.raise_for_status()
                 data = resp.json()

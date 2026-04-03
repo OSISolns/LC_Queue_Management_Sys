@@ -20,7 +20,16 @@ def get_public_doctors(db: Session = Depends(get_db)):
     ).filter(models.User.is_active == True).all()
 
     result = []
+    excluded_depts = {
+        "administration", "physiotherapy", "tabara", 
+        "laboratory", "phlebotomy", "nursing", 
+        "customer care", "operations"
+    }
     for doc in doctors:
+        dept_name = doc.department.name if doc.department else "General Medicine"
+        if dept_name.lower() in excluded_depts:
+            continue
+            
         # Calculate average rating and review count
         stats = db.query(
             func.avg(models.DoctorReview.rating).label("avg_rating"),

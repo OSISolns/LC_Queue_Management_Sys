@@ -701,6 +701,14 @@ async def complete_patient(patient_id: int, db: Session = Depends(get_db)):
     )
     db.add(visit)
     db.commit()
+    db.refresh(visit)
+    
+    # Link any vitals recorded during this queue session to the permanent visit history record
+    from sqlalchemy import update
+    db.query(models.PatientVitals).filter(
+        models.PatientVitals.queue_id == patient.id
+    ).update({models.PatientVitals.visit_id: visit.id}, synchronize_session=False)
+    db.commit()
     
     await sio.emit('queue_update', {'message': 'Patient completed'})
     return {"message": "Patient marked as completed"}
@@ -1902,8 +1910,11 @@ class DoctorsView(BaseView):
             from backend.roster.models import Shift
             shifts = db.query(Shift).all()
             
-            # Load all active departments that have doctors
-            departments = db.query(models.Department).order_by(models.Department.name).all()
+            # Load all active departments that have doctors (excluding specific ones)
+            excluded_departments = ["Administration", "Physiotherapy", "Tabara"]
+            departments = db.query(models.Department).filter(
+                ~models.Department.name.in_(excluded_departments)
+            ).order_by(models.Department.name).all()
             
             dept_data = []
             for dept in departments:
@@ -2343,9 +2354,9 @@ async def list_medications(
 @app.post("/patients/{patient_id}/vitals", response_model=schemas.PatientVitalsResponse)
 async def create_patient_vitals(
     patient_id: int,
-    vitals: schemas.PatientVitalsBase,
+    vitals: schemas.PatientVitalsCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_active_user)
+    current_user: models.User = Depends(get_current_user_optional)
 ):
     """Record new vitals for a patient (Triage)"""
     # Verify patient exists
@@ -2353,9 +2364,12 @@ async def create_patient_vitals(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
         
+    # Use nurse_id from request if authenticated user is not present (simplified portal access)
+    n_id = current_user.id if current_user else vitals.nurse_id
+    
     db_vitals = models.PatientVitals(
-        **vitals.dict(),
-        nurse_id=current_user.id
+        **vitals.dict(exclude={'nurse_id'}),
+        nurse_id=n_id
     )
     db.add(db_vitals)
     db.commit()

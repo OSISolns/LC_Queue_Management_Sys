@@ -316,12 +316,16 @@ def generate_roster(
     exclude_ids = set(request.exclude_staff_ids)
 
     clinic_users = db.query(ClinicUser).filter(ClinicUser.is_active == True).all()
+    dept_names = {d.id: d.name.lower() for d in db.query(Department).all()}
+    excluded_dept_names = {"administration", "physiotherapy", "tabara"}
+
     staff_list = [
         u for u in clinic_users
         if (u.role.category if u.role else "Staff") not in excluded_roles
         and u.id not in unavail_staff_ids
         and u.id not in exclude_ids
         and u.department_id is not None  # Must belong to a department
+        and dept_names.get(u.department_id, "").lower() not in excluded_dept_names
     ]
 
     # 3. Get active shifts
@@ -446,7 +450,11 @@ def get_roster_summary(db: Session, roster_day_id: int):
 
     # Convert to schema shape
     departments = []
+    excluded_depts_summary = {"administration", "physiotherapy", "tabara"}
     for d_id, d_data in dep_map.items():
+        if d_data["department_name"].lower() in excluded_depts_summary:
+            continue
+            
         units_list = []
         for u_id, u_data in d_data["units"].items():
             units_list.append(schemas.UnitRosterGroup(**u_data))

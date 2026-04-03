@@ -20,13 +20,15 @@ if __name__ == "__main__":
     print("=" * 50)
     print("Starting Patient Queuing System Backend")
     print("=" * 50)
-    print("\nBackend API: http://localhost:8000")
-    print("API Docs: http://localhost:8000/docs")
+    print("\nBackend API: https://localhost:8000")
+    print("API Docs: https://localhost:8000/docs")
     print("\nPress Ctrl+C to stop the server\n")
 
     uvicorn.run(
         "backend.main:socket_app",
         host="0.0.0.0",
         port=8000,
-        reload=True
+        reload=True,
+        ssl_keyfile="certs/key.pem",
+        ssl_certfile="certs/cert.pem"
     )

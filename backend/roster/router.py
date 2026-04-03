@@ -9,7 +9,7 @@ import asyncio
 from fastapi.responses import StreamingResponse
 
 # Import dependencies from main.py
-from backend.main import get_db, get_admin_user, get_current_active_user
+from backend.main import get_db, get_admin_user, get_current_active_user, get_current_user_optional
 from backend.models import User
 from backend.roster import schemas, repository, service, models
 from backend.ai_client import ai_client

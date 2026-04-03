@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = "http://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8000";
+const API_BASE = "https://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8000";
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -202,5 +202,33 @@ export const recordPatientVitals = async (patientId, vitalsData) => {
   } catch (error) {
     console.error('Error recording patient vitals:', error);
     throw error;
+  }
+};
+
+export const analyzeVitalsAI = async (currentVitals, history) => {
+  try {
+    const ai_api = axios.create({ baseURL: "https://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8001/api/v1" });
+    const response = await ai_api.post('/clinical/analyze_vitals', {
+      current_vitals: currentVitals,
+      history: history
+    });
+    return response.data;
+  } catch (error) {
+    console.warn('AI Clinical analysis unavailable', error);
+    return null;
+  }
+};
+
+export const checkAllergyAI = async (medicationName, patientAllergies) => {
+  try {
+    const ai_api = axios.create({ baseURL: "https://" + (typeof window !== 'undefined' ? window.location.hostname : 'localhost') + ":8001/api/v1" });
+    const response = await ai_api.post('/clinical/check_allergy', {
+      medication_name: medicationName,
+      patient_allergies: patientAllergies
+    });
+    return response.data;
+  } catch (error) {
+    console.warn('AI Allergy check unavailable', error);
+    return null;
   }
 };

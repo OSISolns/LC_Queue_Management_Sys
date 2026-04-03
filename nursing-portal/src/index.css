@@ -2126,3 +2126,160 @@ body {
   margin-bottom: 20px;
   filter: drop-shadow(0 4px 12px rgba(6, 85, 144, 0.25));
 }
+
+/* Enhanced Visit History Styles */
+.history-item-large.shadow-sm {
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 20px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.history-item-large.shadow-sm:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.h-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.h-date-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--brand-color);
+  font-weight: 700;
+}
+
+.h-entry-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.h-entry-vitals-inline {
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid #eef2f6;
+  margin-top: 12px;
+}
+
+.h-entry-vitals-inline label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.v-pills-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.v-pill-micro {
+  background: white;
+  border: 1.5px solid rgba(14, 165, 233, 0.2);
+  padding: 6px 14px;
+  border-radius: 30px;
+  display: flex;
+  gap: 15px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.v-pill-micro span {
+  display: flex;
+  align-items: center;
+}
+
+.visit-history-tab h4 {
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+.history-scroll-large {
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 15px;
+}
+
+/* Custom Scrollbar for Registry and History */
+.history-scroll-large::-webkit-scrollbar,
+.registry-table-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.history-scroll-large::-webkit-scrollbar-track,
+.registry-table-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-scroll-large::-webkit-scrollbar-thumb,
+.registry-table-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.history-scroll-large::-webkit-scrollbar-thumb:hover,
+.registry-table-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Vitals Grouping Styles */
+.vitals-date-group {
+  margin-bottom: 24px;
+}
+
+.vitals-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 8px 0;
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--border-light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.record-item.triage-card.shadow-sm {
+  margin-bottom: 12px;
+  background: white;
+  border-radius: var(--radius-md);
+  padding: 18px;
+  border: 1px solid var(--border-light);
+}
+
+.record-time {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brand-color);
+  background: rgba(14, 165, 233, 0.08);
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.grouped-vitals {
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 15px;
+}
