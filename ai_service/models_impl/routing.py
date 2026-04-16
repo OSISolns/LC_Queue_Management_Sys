@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import datetime
 import logging
+from typing import Optional
 
 from ..feature_store import get_db_connection
 from .duration import predict_duration

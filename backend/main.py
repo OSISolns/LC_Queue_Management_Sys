@@ -45,7 +45,8 @@ from sqlalchemy import func, desc
 logger = logging.getLogger(__name__)
 
 # ─── Database bootstrap ───────────────────────────────────────────────────────
-models.Base.metadata.create_all(bind=database.engine)
+if not os.getenv("TURSO_DATABASE_URL"):
+    models.Base.metadata.create_all(bind=database.engine)
 
 # ─── FastAPI App ──────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -107,49 +108,51 @@ def check_and_expire_queue(db: Session):
 def startup_event():
     db = database.SessionLocal()
 
-    # Seed Priority Levels
-    for p in [
-        {"id": 1, "name": "Emergency", "weight": 0},
-        {"id": 2, "name": "VIP", "weight": 1},
-        {"id": 3, "name": "Standard", "weight": 2},
-    ]:
-        if not db.query(models.PriorityLevel).filter_by(id=p["id"]).first():
-            db.add(models.PriorityLevel(**p))
+    if not os.getenv("TURSO_DATABASE_URL"):
+        # Seed Priority Levels
+        for p in [
+            {"id": 1, "name": "Emergency", "weight": 0},
+            {"id": 2, "name": "VIP", "weight": 1},
+            {"id": 3, "name": "Standard", "weight": 2},
+        ]:
+            if not db.query(models.PriorityLevel).filter_by(id=p["id"]).first():
+                db.add(models.PriorityLevel(**p))
 
-    # Seed Roles
-    for r in [
-        {"id": 1, "name": "Admin", "category": "Admin"},
-        {"id": 2, "name": "Doctor", "category": "Doctor"},
-        {"id": 3, "name": "Helpdesk", "category": "Helpdesk"},
-        {"id": 4, "name": "Technician", "category": "Technician"},
-        {"id": 5, "name": "SMS Officer", "category": "SMS Officer"},
-        {"id": 6, "name": "Nurse", "category": "Nurse"},
-        {"id": 100, "name": "Quality", "category": "Quality"},
-    ]:
-        role = db.query(models.Role).filter_by(id=r["id"]).first()
-        if not role:
-            db.add(models.Role(**r))
-        elif not role.category:
-            role.category = r["category"]
-            db.add(role)
+        # Seed Roles
+        for r in [
+            {"id": 1, "name": "Admin", "category": "Admin"},
+            {"id": 2, "name": "Doctor", "category": "Doctor"},
+            {"id": 3, "name": "Helpdesk", "category": "Helpdesk"},
+            {"id": 4, "name": "Technician", "category": "Technician"},
+            {"id": 5, "name": "SMS Officer", "category": "SMS Officer"},
+            {"id": 6, "name": "Nurse", "category": "Nurse"},
+            {"id": 100, "name": "Quality", "category": "Quality"},
+        ]:
+            role = db.query(models.Role).filter_by(id=r["id"]).first()
+            if not role:
+                db.add(models.Role(**r))
+            elif not role.category:
+                role.category = r["category"]
+                db.add(role)
 
-    db.commit()
-
-    # Seed Default Admin
-    admin_role = db.query(models.Role).filter_by(name="Admin").first()
-    if admin_role and not db.query(models.User).filter_by(username="admin").first():
-        db.add(models.User(
-            username="admin",
-            hashed_password=get_password_hash("admin123"),
-            role_id=admin_role.id
-        ))
         db.commit()
 
-    check_and_expire_queue(db)
+        # Seed Default Admin
+        admin_role = db.query(models.Role).filter_by(name="Admin").first()
+        if admin_role and not db.query(models.User).filter_by(username="admin").first():
+            db.add(models.User(
+                username="admin",
+                hashed_password=get_password_hash("admin123"),
+                role_id=admin_role.id
+            ))
+            db.commit()
 
-    removed = session_manager.cleanup_old_sessions(db)
-    if removed:
-        print(f"[SESSION] Cleaned up {removed} stale session(s) on startup.")
+    if not os.getenv("TURSO_DATABASE_URL"):
+        check_and_expire_queue(db)
+
+        removed = session_manager.cleanup_old_sessions(db)
+        if removed:
+            print(f"[SESSION] Cleaned up {removed} stale session(s) on startup.")
 
     db.close()
 

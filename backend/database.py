@@ -6,23 +6,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# --- Turso/SQLite Patch ---
+# Turso does not support 'PRAGMA read_uncommitted' which SQLAlchemy calls during initialization.
+from sqlalchemy.dialects.sqlite.base import SQLiteDialect
+original_get_isolation_level = SQLiteDialect.get_isolation_level
+def patched_get_isolation_level(self, dbapi_conn):
+    return "SERIALIZABLE" # Return a default to avoid the PRAGMA call
+SQLiteDialect.get_isolation_level = patched_get_isolation_level
+
 # --- Database Selection ---
 TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
 
 if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
     # Turso/LibSQL Cloud
-    # Use the sqlite dialect with the libsql-client driver
-    # Note: requires 'libsql-client' or 'sqlalchemy-libsql'
-    db_url = f"sqlite+{TURSO_DATABASE_URL}?authToken={TURSO_AUTH_TOKEN}"
-    # Strip the libsql:// prefix if present in the URL from environment
-    if TURSO_DATABASE_URL.startswith("libsql://"):
-        url = TURSO_DATABASE_URL.replace("libsql://", "https://")
-        db_url = f"sqlite+libsql://{url}?authToken={TURSO_AUTH_TOKEN}"
-    else:
-        db_url = TURSO_DATABASE_URL
+    # Strip the libsql:// prefix to get the hostname
+    hostname = TURSO_DATABASE_URL.replace("libsql://", "")
+    db_url = f"sqlite+libsql://{hostname}/?authToken={TURSO_AUTH_TOKEN}"
     
-    engine = create_engine(db_url, connect_args={})
+    from sqlalchemy.pool import NullPool
+    engine = create_engine(db_url, connect_args={}, isolation_level=None, poolclass=NullPool)
 else:
     # Local SQLite
     SQLITE_DATABASE_URL = "sqlite:///./queue.db"
