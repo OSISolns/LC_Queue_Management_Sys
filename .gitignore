@@ -47,3 +47,26 @@ Thumbs.db
 
 # Environment variables
 .env
+
+# Database
+*.db
+*.sqlite3
+backend/*.db
+sql_app.db
+backend/legacy_clinics.db
+
+# Scratch / Temp
+scratch/
+backend/scratch/
+backend/static/uploads/
+
+# Diagnostic / One-off scripts (optional, but cleaning up for now)
+test_*.py
+fix_*.py
+create_*.py
+insert_*.py
+list_*.py
+purge_*.py
+roles_db.py
+update_patient_root.py
+update_portal_dyn.py

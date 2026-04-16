@@ -39,11 +39,12 @@ export const fetchStats = async () => {
   }
 };
 
-export const callNextPatient = async (roomNumber, doctorId) => {
+export const callNextPatient = async (roomNumber, doctorId, patientId = null) => {
   try {
-    const response = await api.post('/queue/next', {
+    const response = await api.post('/call-next', {
       room_number: roomNumber,
       doctor_id: doctorId,
+      patient_id: patientId
     });
     return response.data;
   } catch (error) {
@@ -58,6 +59,48 @@ export const completePatient = async (patientId) => {
     return response.data;
   } catch (error) {
     console.error('Error completing patient:', error);
+    throw error;
+  }
+};
+
+export const fetchRecommendedPatient = async (roomNumber, doctorId) => {
+  try {
+    const response = await api.get('/queue/recommend', {
+      params: { room_number: roomNumber, doctor_id: doctorId }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching recommendation:', error);
+    throw error;
+  }
+};
+
+export const skipPatient = async (patientId) => {
+  try {
+    const response = await api.post(`/queue/skip/${patientId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error skipping patient:', error);
+    throw error;
+  }
+};
+
+export const undoPatientStatus = async (patientId) => {
+  try {
+    const response = await api.post(`/queue/undo/${patientId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error undoing patient status:', error);
+    throw error;
+  }
+};
+
+export const fetchActiveCounters = async () => {
+  try {
+    const response = await api.get('/queue/counters');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching active counters:', error);
     throw error;
   }
 };
@@ -230,5 +273,87 @@ export const checkAllergyAI = async (medicationName, patientAllergies) => {
   } catch (error) {
     console.warn('AI Allergy check unavailable', error);
     return null;
+  }
+};
+
+export const fetchNurseLogs = async (nurseId) => {
+  try {
+    const response = await api.get(`/nurses/${nurseId}/logs`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching nurse logs:', error);
+    throw error;
+  }
+};
+
+export const fetchNotifications = async (limit = 100, type = null) => {
+  try {
+    const params = { limit };
+    if (type) params.type = type;
+    const response = await api.get('/notifications', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    throw error;
+  }
+};
+
+export const markNotificationRead = async (notifId) => {
+  try {
+    const response = await api.put(`/notifications/${notifId}/read`);
+    return response.data;
+  } catch (error) {
+    console.error('Error marking notification read:', error);
+    throw error;
+  }
+};
+
+export const fetchConsumables = async () => {
+  try {
+    const response = await api.get('/consumables');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching consumables:', error);
+    throw error;
+  }
+};
+
+export const createPatientCharge = async (patientId, chargeData) => {
+  try {
+    const response = await api.post(`/patients/${patientId}/charges`, chargeData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating patient charge:', error);
+    throw error;
+  }
+};
+
+export const fetchPatientCharges = async (patientId) => {
+  try {
+    const response = await api.get(`/patients/${patientId}/charges`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching patient charges:', error);
+    throw error;
+  }
+};
+
+export const saveClinicalSheet = async (patientId, sheetData) => {
+  try {
+    const response = await api.post(`/patients/${patientId}/clinical-sheet`, sheetData);
+    return response.data;
+  } catch (error) {
+    console.error('Error saving clinical sheet:', error);
+    throw error;
+  }
+};
+
+export const fetchClinicalSheet = async (patientId, params = {}) => {
+  try {
+    const response = await api.get(`/patients/${patientId}/clinical-sheet`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching clinical sheet:', error);
+    throw error;
   }
 };

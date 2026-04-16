@@ -17,13 +17,13 @@ export default function Display() {
     const params = new URLSearchParams(window.location.search);
     const floor = params.get('floor');
     const department = params.get('department');
-    const isPediatrics = department === 'Pediatrics';
+    const isPediatrics = (department === 'Pediatrics' || floor === 'pediatrics');
 
     const timeoutRef = useRef(null);
     const [voices, setVoices] = useState([]);
 
-    const groundFloorDepartments = ['Neurology', 'Cardiology', 'Procedure', 'Radiology & Laboratory'];
-    const firstFloorDepartments = ['Radiology', 'Pathology', 'Dermatology', 'Orthopedics', 'Pediatrics', 'General', 'ENT', 'Gynecology', 'Urology', 'Internal Medicine', 'General Practitioner', 'General Surgeon', 'Family Medicine', 'Dentistry'];
+    const groundFloorDepartments = ['Neurology', 'Cardiology', 'Procedure', 'Radiology & Laboratory', 'Triage'];
+    const firstFloorDepartments = ['Radiology', 'Pathology', 'Dermatology', 'Orthopedics', 'Pediatrics', 'General', 'ENT', 'Gynecology', 'Urology', 'Internal Medicine', 'General Practitioner', 'General Surgeon', 'Family Medicine', 'Dentistry', 'Triage'];
 
     useEffect(() => {
         const updateVoices = () => {
@@ -100,14 +100,27 @@ export default function Display() {
         const currentFloor = floor ? floor.toLowerCase() : null;
         const currentDept = department ? department.toLowerCase() : null;
 
+        if (isPediatrics) {
+            // ONLY show Pediatrics on Pediatrics display
+            return data.filter(p => p.target_dept && p.target_dept.toLowerCase() === 'pediatrics');
+        }
+
         if (currentDept) {
             return data.filter(p => p.target_dept && p.target_dept.toLowerCase() === currentDept);
         } else if (currentFloor === 'ground') {
-            return data.filter(p => p.target_dept && groundFloorDepartments.some(dept => dept.toLowerCase() === p.target_dept.toLowerCase()));
+            return data.filter(p => {
+                const d = p.target_dept ? p.target_dept.toLowerCase() : '';
+                return groundFloorDepartments.some(dept => dept.toLowerCase() === d) && d !== 'pediatrics';
+            });
         } else if (currentFloor === 'first') {
-            return data.filter(p => p.target_dept && firstFloorDepartments.some(dept => dept.toLowerCase() === p.target_dept.toLowerCase()));
+            return data.filter(p => {
+                const d = p.target_dept ? p.target_dept.toLowerCase() : '';
+                return firstFloorDepartments.some(dept => dept.toLowerCase() === d) && d !== 'pediatrics';
+            });
         }
-        return data;
+        
+        // General "All Floors" display: hide Pediatrics to keep it exclusive
+        return data.filter(p => p.target_dept && p.target_dept.toLowerCase() !== 'pediatrics');
     }
 
     useEffect(() => {
@@ -229,9 +242,9 @@ export default function Display() {
                                     <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Proceed To</div>
                                     <div className="text-3xl font-bold text-slate-800 flex items-center gap-2">
                                         <ArrowRight size={28} className="text-slate-400" />
-                                        Room {patient.room_number || patient.target_room}
+                                        {(patient.room_number || patient.target_room || '').toLowerCase().includes('station') ? '' : 'Room '}
+                                        {patient.room_number || patient.target_room}
                                     </div>
-                                    <div className="text-lg text-slate-500 font-medium truncate">{patient.target_dept}</div>
                                 </div>
 
                                 {/* Decorative Background Elements */}
@@ -276,9 +289,6 @@ export default function Display() {
                                         <div>
                                             <div className="text-2xl font-bold text-slate-700 tracking-tight group-hover:text-[#065590] transition-colors">
                                                 {patient.token_number}
-                                            </div>
-                                            <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                                                {patient.target_dept || "General"}
                                             </div>
                                         </div>
                                     </div>

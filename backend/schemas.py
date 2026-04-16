@@ -18,6 +18,14 @@ class PatientBase(BaseModel):
     blood_type: Optional[str] = None
     allergies: Optional[str] = None
     medical_notes: Optional[str] = None
+    insurance: Optional[str] = None
+    occupation: Optional[str] = None
+    national_id: Optional[str] = None
+    nationality: Optional[str] = None
+    province: Optional[str] = None
+    district: Optional[str] = None
+    sector: Optional[str] = None
+    next_of_kin_relationship: Optional[str] = None
 
 class PatientCreate(PatientBase):
     pass
@@ -119,6 +127,8 @@ class QueueResponse(QueueBase):
     patient_gender: Optional[str] = None
     patient_dob: Optional[str] = None
     priority_name: Optional[str] = None
+    doctor_room: Optional[str] = None
+    doctor_floor: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -126,6 +136,7 @@ class QueueResponse(QueueBase):
 class CallNextRequest(BaseModel):
     doctor_id: int
     room_number: str
+    patient_id: Optional[int] = None
 
 
 # Department Schemas
@@ -514,5 +525,80 @@ class PatientVitalsResponse(PatientVitalsBase):
     queue_id: Optional[int] = None
     visit_id: Optional[int] = None
 
+    class Config:
+        orm_mode = True
+
+# Notification Schemas
+class NotificationBase(BaseModel):
+    title: str
+    message: str
+    type: str = "info"
+    priority: int = 1
+    nurse_id: Optional[int] = None
+    patient_id: Optional[int] = None
+    room_number: Optional[str] = None
+
+class NotificationCreate(NotificationBase):
+    pass
+
+class NotificationResponse(NotificationBase):
+    id: int
+    created_at: datetime
+    is_read: bool
+
+    class Config:
+        orm_mode = True
+
+# Consumables & Billing Schemas
+class ConsumableBase(BaseModel):
+    name: str
+    category: Optional[str] = None
+    price: float = 0.0
+    unit: str = "pcs"
+    is_active: bool = True
+
+class ConsumableCreate(ConsumableBase):
+    pass
+
+class ConsumableResponse(ConsumableBase):
+    id: int
+    class Config:
+        orm_mode = True
+
+class PatientChargeBase(BaseModel):
+    patient_id: int
+    queue_id: Optional[int] = None
+    consumable_id: int
+    quantity: int = 1
+
+class PatientChargeCreate(PatientChargeBase):
+    nurse_id: int
+
+class PatientChargeResponse(PatientChargeBase):
+    id: int
+    price_at_time: float
+    total_amount: float
+    nurse_id: int
+    nurse_name: Optional[str] = None
+    consumable_name: Optional[str] = None
+    created_at: datetime
+    class Config:
+        orm_mode = True
+
+class ClinicalSheetBase(BaseModel):
+    patient_id: int
+    data: str
+    visit_id: Optional[int] = None
+    queue_id: Optional[int] = None
+
+class ClinicalSheetCreate(ClinicalSheetBase):
+    recorded_by_id: Optional[int] = None
+
+class ClinicalSheetResponse(ClinicalSheetBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    recorded_by_id: Optional[int] = None
+    
     class Config:
         orm_mode = True

@@ -45,13 +45,21 @@ async def sync_patients():
 
 
 
+            # Add headers to mimic a real browser
+            client.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Referer": LOGIN_URL
+            })
+
             resp = await client.post(LOGIN_URL, data=login_data)
             
             # Check if login worked - look for signs of being logged in
             if "Logout" not in resp.text and "fm_login.aspx" in str(resp.url):
                 print(f"Login failed - status: {resp.status_code}")
-                print(f"Current URL: {resp.url}")
-                # print(f"Response snippet: {resp.text[:500]}")
+                # print(f"Current URL: {resp.url}")
+                with open("login_fail.html", "w") as f:
+                    f.write(resp.text)
+                print("Saved failure page to login_fail.html")
                 return
 
 
@@ -78,101 +86,117 @@ async def sync_patients():
                 all_inputs[name] = value
 
             # Override/Set specific search parameters
-            query_data = {
-                **all_inputs,
-                "ctl00$Main_Content$txtFromDate": "01/01/2020",
-                "ctl00$Main_Content$txtToDate": datetime.now().strftime("%d/%m/%Y"),
-                "ctl00$Main_Content$butView": "View",
-                "ctl00$Main_Content$butView.x": "10",
-                "ctl00$Main_Content$butView.y": "10"
-            }
-
-
-            # Trigger the query as a standard POST
-            print("Fetching patient data (broad search, full HTML)...")
-            resp = await client.post(QUERY_URL, data=query_data, timeout=300.0)
-
-
-
+            from datetime import timedelta
             
-            # 4. Parse the resulting patient table
-            soup = BeautifulSoup(resp.text, 'html.parser')
+            start_date = datetime(2024, 1, 1)
+            end_date = datetime.now()
             
-            # Debug: List all tables found
-            tables = soup.find_all('table')
-            print(f"Found {len(tables)} tables in response.")
-            for t in tables:
-                if t.get('id'): print(f"Table ID: {t.get('id')}")
-
-            table = soup.find('table', id='ctl00_Main_Content_grdPatientQuery')
-            
-            if not table:
-                print("Data grid table not found on query page results.")
-                # print(f"First 1000 chars of body: {str(soup.body)[:1000]}")
-                return
-
-
-            rows = table.find_all('tr')
-            # Identify data rows (usually skip header)
-            data_rows = []
-            for row in rows:
-                if row.find('td') and "HIS No" not in row.text:
-                    data_rows.append(row)
-
-            print(f"Found {len(data_rows)} patients in query results.")
+            chunk_size = timedelta(days=60)
+            current_start = start_date
             
             db = SessionLocal()
-            count = 0
+            total_count = 0
             processed_mrns = set()
-            for row in data_rows:
-                cols = row.find_all('td')
-                if len(cols) < 6: continue # HIS No, Name, InvNo, InvDate, Age/Sex, Mobile
-                
-                mrn = cols[0].get_text(strip=True)
-                fullname = cols[1].get_text(strip=True)
-                
-                if not mrn or mrn == "HIS No" or mrn in processed_mrns: continue
-                processed_mrns.add(mrn)
 
-                # Clean name: remove prefix
-                clean_name = fullname
-                for prefix in ["Mr. ", "Mrs. ", "Ms. ", "Miss. ", "Dr. ", "Baby of "]:
-                    if clean_name.startswith(prefix):
-                        clean_name = clean_name[len(prefix):]
-                        break
+            while current_start <= end_date:
+                current_end = current_start + chunk_size
+                if current_end > end_date:
+                    current_end = end_date
+                    
+                str_from = current_start.strftime("%d/%m/%Y")
+                str_to = current_end.strftime("%d/%m/%Y")
                 
-                parts = clean_name.split(' ', 1)
-                first_name = parts[0][:100]
-                last_name = parts[1][:100] if len(parts) > 1 else ""
+                print(f"Fetching patient data from {str_from} to {str_to}...")
                 
-                age_sex = cols[4].get_text(strip=True) # Index 4: Age/Sex
-                gender = "Male" if "/ M" in age_sex or " M" in age_sex else "Female" if "/ F" in age_sex or " F" in age_sex else "Other"
-                
-                phone = cols[5].get_text(strip=True) # Index 5: Mobile No
-                
-                # Database Upsert
-                patient = db.query(models.Patient).filter(models.Patient.mrn == mrn).first()
-                if not patient:
-                    patient = models.Patient(
-                        mrn=mrn,
-                        first_name=first_name,
-                        last_name=last_name,
-                        gender=gender,
-                        phone_number=phone[:20] if phone else None
-                    )
-                    db.add(patient)
+                query_data = {
+                    **all_inputs,
+                    "ctl00$Main_Content$txtFromDate": str_from,
+                    "ctl00$Main_Content$txtToDate": str_to,
+                    "ctl00$Main_Content$butView": "View",
+                    "ctl00$Main_Content$butView.x": "10",
+                    "ctl00$Main_Content$butView.y": "10"
+                }
+
+                resp = await client.post(QUERY_URL, data=query_data, timeout=300.0)
+                soup = BeautifulSoup(resp.text, 'html.parser')
+
+                table = soup.find('table', id='ctl00_Main_Content_grdPatientQuery')
+                if table:
+                    rows = table.find_all('tr')
+                    data_rows = [row for row in rows if row.find('td') and "HIS No" not in row.text]
+                    
+                    count = 0
+                    for row in data_rows:
+                        cols = row.find_all('td')
+                        if len(cols) < 6: continue
+                        
+                        mrn = cols[0].get_text(strip=True)
+                        fullname = cols[1].get_text(strip=True)
+                        if not mrn or mrn == "HIS No" or mrn in processed_mrns: continue
+                        processed_mrns.add(mrn)
+
+                        clean_name = fullname
+                        for prefix in ["Mr. ", "Mrs. ", "Ms. ", "Miss. ", "Dr. ", "Baby of "]:
+                            if clean_name.startswith(prefix):
+                                clean_name = clean_name[len(prefix):]
+                                break
+                        
+                        parts = clean_name.split(' ', 1)
+                        first_name = parts[0][:100]
+                        last_name = parts[1][:100] if len(parts) > 1 else ""
+                        
+                        age_sex = cols[4].get_text(strip=True)
+                        import re
+                        age_match = re.search(r'(\d+)\s*[Yy]', age_sex)
+                        estimated_dob = None
+                        if age_match:
+                            try:
+                                age_yrs = int(age_match.group(1))
+                                # Estimates DOB to January 1st of the calculated birth year
+                                estimated_dob = datetime(datetime.now().year - age_yrs, 1, 1).date()
+                            except: pass
+
+                        gender = "Male" if "/ M" in age_sex or " M" in age_sex else "Female" if "/ F" in age_sex or " F" in age_sex else "Other"
+                        phone = cols[5].get_text(strip=True)
+                        
+                        # Extra data from the Sukraa Patient Query screenshot
+                        ref_type = cols[6].get_text(strip=True) if len(cols) > 6 else ""
+                        referrer = cols[7].get_text(strip=True) if len(cols) > 7 else ""
+                        insurance = referrer if ref_type.lower() == "insurance" else None
+                        
+                        patient = db.query(models.Patient).filter(models.Patient.mrn == mrn).first()
+                        if not patient:
+                            patient = models.Patient(
+                                mrn=mrn,
+                                first_name=first_name,
+                                last_name=last_name,
+                                gender=gender,
+                                date_of_birth=estimated_dob,
+                                phone_number=phone[:20] if phone else None,
+                                insurance=insurance
+                            )
+                            db.add(patient)
+                        else:
+                            patient.first_name = first_name
+                            patient.last_name = last_name
+                            patient.gender = gender
+                            if estimated_dob:
+                                patient.date_of_birth = estimated_dob
+                            patient.phone_number = phone[:20] if phone else None
+                            if insurance:
+                                patient.insurance = insurance
+                        count += 1
+                        total_count += 1
+                    
+                    db.commit()
+                    print(f"Processed {count} unique patients in this chunk.")
                 else:
-                    patient.first_name = first_name
-                    patient.last_name = last_name
-                    patient.gender = gender
-                    patient.phone_number = phone[:20] if phone else None
+                    print("Data grid table not found on query page results.")
                 
-                count += 1
-            
-            db.commit()
-
+                current_start = current_end + timedelta(days=1)
+                
             db.close()
-            print(f"Successfully synchronized {count} patients into local registry.")
+            print(f"Successfully synchronized {total_count} patients into local registry.")
 
 
         except Exception as e:

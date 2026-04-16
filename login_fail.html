@@ -1,0 +1,151 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>
+	SHIMS Login
+</title><link href="../css/Common.css" media="screen" rel="stylesheet" type="text/css" /><link href="../css/dialogbox.css" media="screen" rel="stylesheet" type="text/css" />
+    <script type="text/javascript" language="javascript" src="../js/sukraa.js"></script>
+    <script type="text/javascript" language="javascript">
+        function setFocus() {
+            user = document.getElementById('txtUserName');
+            user.focus();
+        }
+        function BrowserType() {
+            var browser = navigator.userAgent.toLowerCase().indexOf('chrome') > -1;
+            if (browser == false) {
+                document.getElementById("divBrowser").style.display = 'Block';
+            }
+        }
+        function validate() {
+            user = document.getElementById('txtUserName');
+            pass = document.getElementById('txtPassword');
+
+            if (trim(user.value) == '' || trim(pass.value) == '') {
+                alert('Please enter the user name and password');
+
+                if (trim(user.value) == '')
+                    user.focus();
+                else if (trim(pass.value) == '')
+                    pass.focus();
+
+                return false;
+            }
+
+            return true;
+        }
+        function checkCapsLock(e) {
+            var myKeyCode = 0;
+            var myShiftKey = false;
+            //var myMsg = 'Caps Lock is On.\n\nTo prevent entering your password incorrectly,\nyou should press Caps Lock to turn it off.';
+            var CapsOn = false;
+
+            // Internet Explorer 4+
+            if (document.all) {
+                myKeyCode = e.keyCode;
+                myShiftKey = e.shiftKey;
+
+                // Netscape 4
+            } else if (document.layers) {
+                myKeyCode = e.which;
+                if (e.shiftKey)
+                    myShiftKey = e.shiftKey
+                else
+                    myShiftKey = (myKeyCode == 16) ? true : false;
+
+                // Netscape 6, Mozilla, Chrome
+            } else if (document.getElementById) {
+                myKeyCode = e.which;
+                if (e.shiftKey)
+                    myShiftKey = e.shiftKey
+                else
+                    myShiftKey = (myKeyCode == 16) ? true : false;
+            }
+
+            // Upper case letters are seen without depressing the Shift key, therefore Caps Lock is on
+            if ((myKeyCode >= 65 && myKeyCode <= 90) && !myShiftKey) {
+                CapsOn = true;
+
+                // Lower case letters are seen while depressing the Shift key, therefore Caps Lock is on
+            }
+            else if ((myKeyCode >= 97 && myKeyCode <= 122) && myShiftKey) {
+                CapsOn = true;
+            }
+            var oMsg = document.getElementById('spnCapsMsg');
+            oMsg.style.visibility = (CapsOn ? 'visible' : 'hidden');
+        }
+
+        function Get_Mac() {
+            alert('');
+            var m = document.execCommand('Getmac');
+        }
+
+    </script>
+</head>
+<body onload="setFocus();BrowserType()" onkeypress="checkCapsLock(event)">
+    <div id="fb-root" style="margin-left: 37%; margin-top: 95px;">
+        <img src="../images/MedicalLogo.png" height="400px" alt="" />
+    </div>
+    <form name="frmLogin" method="post" action="./fm_login.aspx" id="frmLogin">
+<div>
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="/wEPDwUJNTYwMzAzMzI5D2QWAgIDD2QWAgIHDxYCHglpbm5lcmh0bWxlZGTyYPNlRPIo2MakzO67mWj0mLZc3jxqWZJkTqbl9DXOjw==" />
+</div>
+
+<div>
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="2205D741" />
+	<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="/wEdAASJgFD3xnDrCAdnmNPa+k4QY3plgk0YBAefRz3MyBlTcHY2+Mc6SrnAqio3oCKbxYZ3ruVs6dbUcXOaYEYiFp4WCbZGT8CTJD9uWTJR+THMoUMLtl/b2z1u2hN9nS5Sg0w=" />
+</div>
+        <div class="p40">
+            <div class="dialog center">
+                <div class="dialog_content login" style="height: 220px;">
+                    <div style="margin: -15px 0; text-align: left; clear: both;">
+                        <div style="float: left; width: 50%; margin-top: 5px;">
+                            <img alt="" height="60" src="../images/ClientLogo.png" width="150">
+                        </div>
+                        <div style="float: left; margin-top: 15px; text-align: right; width: 50%;">
+                            <img src="../images/SlimsLab.png" width="150px" alt="" />
+                        </div>
+                    </div>
+                    <div style="clear: both;">
+                        <div id="logins" style="margin-top: 15px;">
+                            <div class="content" style="height: 105px;">
+                                <br />
+                                <p>
+                                    <label for="login" class="large" style="color: #10334D; line-height: 35px; font-size: 15px;">Username</label>
+                                    <input name="txtUserName" type="text" value="lc_valery" maxlength="20" id="txtUserName" tabindex="1" style="height:20px;width:200px;" />
+                                </p>
+                                <p>
+                                    <label for="password" class="large" style="color: #10334D; line-height: 35px; font-size: 15px">Password</label>
+                                    <input name="txtPassword" type="password" maxlength="10" id="txtPassword" tabindex="2" style="height:20px;width:200px;" />
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="width: 83%; text-align: right; margin-top: 20px">
+                        <span id="spnCapsMsg" style="vertical-align: middle; color: red; font-weight: bold; visibility: hidden">Warning !!! Caps Lock is ON</span>
+                        <img src="../images/LockOrrange.png" width="45px" height="30px" alt="" />
+                    </div>
+                    <div class="dialog_buttons">
+                        <input type="submit" name="butLogin" value="Login" onclick="return validate();" id="butLogin" tabindex="3" class="button" style="font-size: 17px; float: left" />
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="divBrowser" style="margin-left: 480px; display: none;">
+            <div>
+                <div style="color: Red;">Please use google chrome browser due to compatibility issues</div>
+                Download chrome <a href="https://www.google.com/intl/en/chrome/browser/?hl=en&brand=CHNG&utm_source=en-hpp&utm_medium=hpp&utm_campaign=en">Click Here</a>
+            </div>
+        </div>
+        <div id="divLic" style="width:700px;margin-left:300px;color: Red;"></div>
+    
+
+<script type="text/javascript">
+//<![CDATA[
+javascript:alert('Invalid password for lc_valery');//]]>
+</script>
+</form>
+</body>
+</html>

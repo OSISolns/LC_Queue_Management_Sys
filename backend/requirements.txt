@@ -16,3 +16,4 @@ openpyxl
 httpx
 cachetools
 beautifulsoup4
+alembic

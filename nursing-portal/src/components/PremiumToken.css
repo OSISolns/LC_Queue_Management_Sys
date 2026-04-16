@@ -1,0 +1,155 @@
+/* ==========================================================================
+   Premium Token Card - Refined Side-Logo Layout
+   ========================================================================== */
+.premium-token-card {
+  background: #ffffff;
+  border-radius: 32px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden; /* We keep this to clip the sidebar background but not the logo itself if handled right */
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  display: flex !important; /* Flex layout */
+  flex-direction: row !important;
+  min-height: 580px;
+}
+
+/* Redesigned Sidebar for Logo */
+.token-sidebar {
+  width: 80px;
+  background: #f1f5f9;
+  border-right: 1px solid rgba(226, 232, 240, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.vertical-logo-wrapper {
+  transform: rotate(-90deg);
+  width: 500px; /* Large enough to prevent wrapping */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.card-side-logo {
+  height: 60px; /* Slightly bigger as requested */
+  width: auto;
+  filter: contrast(1.05);
+  display: block;
+}
+
+/* Main Content Column */
+.token-main-content {
+  flex: 1;
+  padding: 32px 32px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
+.card-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  background: rgba(30, 58, 138, 0.05);
+  padding: 6px 14px;
+  border-radius: 100px;
+  margin-bottom: 24px;
+  letter-spacing: 0.1em;
+  align-self: center;
+}
+
+.token-number-display {
+  font-size: 5.5rem;
+  font-weight: 900;
+  color: #1e3a8a;
+  margin: 12px 0;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-feature-settings: "tnum";
+}
+
+.qr-container {
+  background: #f8fafc;
+  padding: 20px;
+  border-radius: 24px;
+  margin: 20px 0;
+  position: relative;
+  border: 1px solid rgba(0,0,0,0.03);
+}
+
+.qr-code-img {
+  width: 150px;
+  height: 150px;
+  mix-blend-mode: multiply;
+}
+
+.patient-initials-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: #1e3a8a;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  border: 3px solid #f8fafc;
+  font-size: 0.85rem;
+}
+
+.location-info {
+  margin: 20px 0;
+  width: 100%;
+}
+
+.room-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.finish-btn-premium {
+  width: 100%;
+  margin-top: auto;
+  background: #1e3a8a;
+  color: white;
+  border: none;
+  padding: 16px;
+  border-radius: 18px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 10px 25px -5px rgba(30, 58, 138, 0.4);
+}
+
+.finish-btn-premium:hover {
+  background: #1e40af;
+  transform: translateY(-2px);
+  box-shadow: 0 20px 30px -10px rgba(30, 58, 138, 0.5);
+}

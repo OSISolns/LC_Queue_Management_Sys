@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    allowedHosts: ['localhost'],
+    allowedHosts: ['localhost', 'cs.legacyclinics.local', 'qs.legacyclinics.local'],
     https: {
       key: fs.readFileSync(path.resolve(__dirname, '../certs/key.pem')),
       cert: fs.readFileSync(path.resolve(__dirname, '../certs/cert.pem')),

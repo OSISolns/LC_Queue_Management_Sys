@@ -46,4 +46,9 @@ export const getPatientVisits = async (patientId) => {
   return response.data;
 };
 
+export const getPatientActiveQueue = async (patientId) => {
+  const response = await api.get(`/patients/${patientId}/active-queue`);
+  return response.data;
+};
+
 export default api;

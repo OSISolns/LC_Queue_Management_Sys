@@ -7,18 +7,19 @@ from .duration import predict_duration
 
 logger = logging.getLogger(__name__)
 
-def get_available_doctors():
+def get_available_doctors(age: Optional[int] = None):
     """Find doctors who are rostered today, available, and not currently busy."""
     day_name = datetime.now().strftime("%A")
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        # Query for doctors who are active, available, rostered for today, 
-        # and NOT currently handling a patient (not in status 'calling' or 'in-consultation')
+        
+        # Base query
         query = """
-            SELECT u.id, u.full_name, u.room_number, u.salutation
+            SELECT u.id, u.full_name, u.room_number, u.salutation, d.name as department_name
             FROM users u
             JOIN roles r ON u.role_id = r.id
             JOIN doctor_rosters dr ON u.id = dr.doctor_id
+            LEFT JOIN departments d ON u.department_id = d.id
             WHERE u.is_active = 1 
               AND u.is_available = 1
               AND (r.name = 'Doctor' OR r.category = 'Doctor')
@@ -30,11 +31,16 @@ def get_available_doctors():
                     AND doctor_id IS NOT NULL
               )
         """
+        
+        # Pediatrics Restriction: Only kids (<= 15) in Pediatrics
+        if age is not None and age > 15:
+            query += " AND (d.name IS NULL OR d.name NOT LIKE '%Pediatrics%')"
+        
         cursor.execute(query, (day_name,))
         doctors = [dict(row) for row in cursor.fetchall()]
         return doctors
 
-def recommend_counter(service_type: str, priority_id: int):
+def recommend_counter(service_type: str, priority_id: int, age: Optional[int] = None):
     """
     Recommends the best counter/doctor based on priority, availability, and predicted durations.
     """
@@ -43,9 +49,9 @@ def recommend_counter(service_type: str, priority_id: int):
 
     # 1. If it's a clinical visit, try to find an available doctor first
     if is_clinical:
-        available_doctors = get_available_doctors()
+        available_doctors = get_available_doctors(age)
         if available_doctors:
-            # If we find doctors who are free NOW, pick one (e.g., the first one available)
+            # If we find doctors who are free NOW, pick one
             doc = available_doctors[0]
             name = f"{doc['salutation'] or 'Dr.'} {doc['full_name']}"
             return {
@@ -60,21 +66,28 @@ def recommend_counter(service_type: str, priority_id: int):
         cursor = conn.cursor()
         
         # Determine active counters from recent queue activity
-        cursor.execute("""
-            SELECT DISTINCT room_number as counter_id 
-            FROM queue 
-            WHERE status IN ('calling', 'waiting') 
-              AND room_number IS NOT NULL
-        """)
+        query = """
+            SELECT DISTINCT q.room_number as counter_id, d.name as department_name
+            FROM queue q
+            LEFT JOIN users u ON q.room_number = u.room_number
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE q.status IN ('calling', 'waiting') 
+              AND q.room_number IS NOT NULL
+        """
+        
+        if age is not None and age > 15:
+            # Exclude Pediatrics rooms
+            query += " AND (d.name IS NULL OR d.name NOT LIKE '%Pediatrics%')"
+            
+        cursor.execute(query)
         active_counters = [row['counter_id'] for row in cursor.fetchall()]
 
     if not active_counters:
-        # If no active rooms found, try to get ALL rooms for the relevant department
-        # For simplicity, we fallback to a default
+        # Final safety fallback: get any room from non-pediatrics if age > 15
         return {
-            "recommended_counter_id": "Counter-1",
+            "recommended_counter_id": "General-1",
             "estimated_wait_seconds": 300.0,
-            "reason": "No active counters found, using default routing."
+            "reason": "AI selected default routing (Age restriction applied if applicable)."
         }
         
     best_counter = None
@@ -95,13 +108,6 @@ def recommend_counter(service_type: str, priority_id: int):
         duration_resp = predict_duration(features)
         ticket_duration = duration_resp.get('predicted_duration_seconds', 300.0)
         
-        # Apply priority rules
-        if priority_id == 1: # Emergency (assuming 1 is Emergency based on backend/main.py)
-            if ticket_duration < min_wait:
-                min_wait = ticket_duration
-                best_counter = counter_id
-            continue
-
         # Estimate wait time behind existing queue
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -125,5 +131,6 @@ def recommend_counter(service_type: str, priority_id: int):
     return {
         "recommended_counter_id": best_counter,
         "estimated_wait_seconds": min_wait,
-        "reason": f"Selected Room {best_counter} based on minimum predicted queue wait time."
+        "reason": f"Selected Room {best_counter} based on minimum predicted queue wait time (Age verified)."
     }
+

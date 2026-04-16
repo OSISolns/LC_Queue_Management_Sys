@@ -132,7 +132,7 @@ const Booking = () => {
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem' }}>
                 <input 
                   type="text" 
-                  placeholder="Enter Phone or MRN" 
+                  placeholder="Enter Phone or PID" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ flex: 1 }}

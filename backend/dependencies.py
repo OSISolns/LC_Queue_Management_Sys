@@ -1,15 +1,13 @@
+# ~ Valery Structure
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 from jose import JWTError, jwt
 from . import models, schemas, database, session_manager
+from .auth_utils import SECRET_KEY, ALGORITHM
 from typing import Optional
 import hashlib
 from datetime import datetime, timedelta
-
-# Auth Configuration (Must match main.py)
-SECRET_KEY = "supersecretkey_change_me_in_production"
-ALGORITHM = "HS256"
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)

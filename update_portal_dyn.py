@@ -1,4 +1,4 @@
-import os
+rimport os
 
 file_path = "/home/noble/Documents/LC_APPS/LC_Queuing-Sys/patient-portal/src/pages/Doctors.jsx"
 

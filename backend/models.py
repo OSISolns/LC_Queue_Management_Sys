@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Date, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Date, Text, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -36,15 +36,31 @@ class Patient(Base):
     blood_type = Column(String, nullable=True)
     allergies = Column(Text, nullable=True)
     medical_notes = Column(Text, nullable=True)
+    insurance = Column(String, nullable=True)
+    
+    # New identification fields for Clinical Sheet
+    occupation = Column(String, nullable=True)
+    national_id = Column(String, nullable=True)
+    nationality = Column(String, nullable=True)
+    province = Column(String, nullable=True)
+    district = Column(String, nullable=True)
+    sector = Column(String, nullable=True)
+    next_of_kin_relationship = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
     # Relationships
-    queue_entries = relationship("Queue", back_populates="patient")
-    visit_history = relationship("VisitHistory", back_populates="patient", order_by="desc(VisitHistory.visit_date)")
-    appointments = relationship("Appointment", back_populates="patient")
-    reviews = relationship("DoctorReview", back_populates="patient")
+    queue_entries = relationship("Queue", back_populates="patient", cascade="all, delete-orphan")
+    vitals = relationship("PatientVitals", back_populates="patient", cascade="all, delete-orphan")
+    notes = relationship("ObservationNote", back_populates="patient", cascade="all, delete-orphan")
+    medications = relationship("MedicationAdministration", back_populates="patient", cascade="all, delete-orphan")
+    appointments = relationship("Appointment", back_populates="patient", cascade="all, delete-orphan")
+    reviews = relationship("DoctorReview", back_populates="patient", cascade="all, delete-orphan")
+    visits = relationship("VisitHistory", back_populates="patient", cascade="all, delete-orphan")
+    charges = relationship("PatientCharge", back_populates="patient", cascade="all, delete-orphan")
+    notifications = relationship("ClinicNotification", back_populates="patient", cascade="all, delete-orphan")
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.mrn})"
@@ -55,10 +71,10 @@ class Queue(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     token_number = Column(String, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)  # Link to patient registry
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=True)  # Link to patient registry
     patient_name = Column(String)  # Keep for backward compatibility and walk-ins
     priority_id = Column(Integer, ForeignKey("priority_levels.id"))
-    status = Column(String, default="waiting") # waiting, calling, completed, no-show
+    status = Column(String, default="waiting") # waiting, calling, serving, completed, skipped, no-show
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
@@ -68,6 +84,8 @@ class Queue(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     called_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    skipped_at = Column(DateTime, nullable=True)
+    previous_status = Column(String, nullable=True) # For Undo
     visit_type = Column(String, nullable=True)  # New Patient, Follow-up, Emergency
     doctor_notes = Column(Text, nullable=True)   # Doctor's consultation notes
 
@@ -84,6 +102,16 @@ class Queue(Base):
         if self.doctor.salutation:
             return f"{self.doctor.salutation} {name}"
         return name
+
+    @property
+    def doctor_room(self):
+        if not self.doctor: return None
+        return self.doctor.room_number
+
+    @property
+    def doctor_floor(self):
+        if not self.doctor: return None
+        return self.doctor.floor
 
     @property
     def registrar_name(self):
@@ -137,7 +165,7 @@ class VisitHistory(Base):
     __tablename__ = "visit_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     queue_id = Column(Integer, ForeignKey("queue.id"), nullable=True)
     visit_date = Column(DateTime, default=datetime.utcnow)
     department = Column(String, nullable=True)
@@ -156,7 +184,7 @@ class VisitHistory(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    patient = relationship("Patient", back_populates="visit_history")
+    patient = relationship("Patient", back_populates="visits")
     doctor = relationship("User", foreign_keys=[doctor_id])
 
 class Department(Base):
@@ -207,6 +235,7 @@ class User(Base):
     is_available = Column(Boolean, default=True) # For doctors/staff availability status
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     room_number = Column(String, nullable=True)
+    floor = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
@@ -382,7 +411,7 @@ class Appointment(Base):
     __tablename__ = "appointments"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     appointment_date = Column(DateTime, nullable=False)
     reason = Column(String, nullable=True)
@@ -397,7 +426,7 @@ class DoctorReview(Base):
     __tablename__ = "doctor_reviews"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     rating = Column(Integer, nullable=False)  # 1-5
     comment = Column(Text, nullable=True)
@@ -411,7 +440,7 @@ class ObservationNote(Base):
     __tablename__ = "observation_notes"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True) # Nurse who wrote the note
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -433,7 +462,7 @@ class PatientVitals(Base):
     __tablename__ = "patient_vitals"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Core Vitals
@@ -471,7 +500,7 @@ class MedicationAdministration(Base):
     __tablename__ = "medication_administrations"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     medication_name = Column(String, nullable=False)
     dosage = Column(String, nullable=True)
@@ -490,3 +519,73 @@ class MedicationAdministration(Base):
         if self.nurse.salutation:
             return f"{self.nurse.salutation} {name}"
         return name
+
+class ClinicNotification(Base):
+    """System-wide notifications for emergencies, legal documentation, and clinical events"""
+    __tablename__ = "clinic_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String, default="info")  # info, emergency, death, legal, sync
+    priority = Column(Integer, default=1)   # 0=Critical, 1=Normal, 2=Low
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_read = Column(Boolean, default=False)
+    
+    # Metadata for legal/emergency tracing
+    nurse_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=True)
+    room_number = Column(String, nullable=True)
+
+    # Relationships
+    nurse = relationship("User", foreign_keys=[nurse_id])
+    patient = relationship("Patient", back_populates="notifications")
+
+    def __str__(self):
+        return f"{self.type.upper()}: {self.title} ({self.created_at})"
+
+class ClinicalSheet(Base):
+    """Permanent storage for the full Clinical Observation Sheet"""
+    __tablename__ = "clinical_sheets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    visit_id = Column(Integer, ForeignKey("visit_history.id"), nullable=True)
+    queue_id = Column(Integer, ForeignKey("queue.id"), nullable=True)
+    
+    # We store the structured data as a JSON blob for maximum flexibility 
+    # while allowing the UI to maintain its complex schema
+    data = Column(Text, nullable=False) 
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    recorded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    patient = relationship("Patient")
+    visit = relationship("VisitHistory")
+    recorder = relationship("User")
+
+class Consumable(Base):
+    __tablename__ = "consumables"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    category = Column(String, nullable=True) # e.g. Medication, Consumable, Lab
+    price = Column(Float, default=0.0)
+    unit = Column(String, default="pcs")
+    is_active = Column(Boolean, default=True)
+
+class PatientCharge(Base):
+    __tablename__ = "patient_charges"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"))
+    queue_id = Column(Integer, ForeignKey("queue.id"), nullable=True)
+    consumable_id = Column(Integer, ForeignKey("consumables.id"))
+    quantity = Column(Integer, default=1)
+    price_at_time = Column(Float)
+    total_amount = Column(Float)
+    nurse_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    patient = relationship("Patient")
+    consumable = relationship("Consumable")
+    nurse = relationship("User")

@@ -66,15 +66,17 @@ class QMSAIClient:
             logger.error(f"AI Service Wait Time prediction failed: {str(e)}")
             return self._fallback_wait_time()
 
-    async def get_counter_recommendation(self, service_type: str, priority_id: int) -> Dict[str, Any]:
-        cache_key = f"recommend:{service_type}:{priority_id}"
+    async def get_counter_recommendation(self, service_type: str, priority_id: int, age: Optional[int] = None) -> Dict[str, Any]:
+        cache_key = f"recommend:{service_type}:{priority_id}:{age}"
         if cache_key in ai_cache:
             return ai_cache[cache_key]
 
         payload = {
             "service_type": service_type,
-            "priority_id": priority_id
+            "priority_id": priority_id,
+            "age": age
         }
+
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout, verify=False) as client:

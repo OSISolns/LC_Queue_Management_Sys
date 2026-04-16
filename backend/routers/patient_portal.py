@@ -114,6 +114,24 @@ def book_appointment(appointment: schemas.AppointmentCreate, db: Session = Depen
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
         
+    # Pediatrics Age Restriction (<= 15)
+    is_pediatrics = False
+    if doctor.department and "Pediatrics" in doctor.department.name:
+        is_pediatrics = True
+    elif doctor.department_id == 17:
+        is_pediatrics = True
+        
+    if is_pediatrics:
+        if patient.date_of_birth:
+             today = datetime.now().date()
+             age = today.year - patient.date_of_birth.year - ((today.month, today.day) < (patient.date_of_birth.month, patient.date_of_birth.day))
+             if age > 15:
+                 raise HTTPException(
+                     status_code=400,
+                     detail=f"Pediatrics Restriction: Patient is {age} years old. Only children <= 15 years are allowed in Pediatrics."
+                 )
+
+        
     new_app = models.Appointment(
         patient_id=appointment.patient_id,
         doctor_id=appointment.doctor_id,
@@ -245,3 +263,12 @@ def get_patient_visits(patient_id: int, db: Session = Depends(get_db)):
             doctor_name=doctor_name
         ))
     return result
+
+@router.get("/patients/{patient_id}/active-queue", response_model=Optional[schemas.QueueResponse])
+def get_patient_active_queue(patient_id: int, db: Session = Depends(get_db)):
+    """Get the currently active queue entry for a patient (waiting or calling/serving)"""
+    entry = db.query(models.Queue).filter(
+        models.Queue.patient_id == patient_id,
+        models.Queue.status.in_(["waiting", "calling", "serving"])
+    ).order_by(models.Queue.created_at.desc()).first()
+    return entry

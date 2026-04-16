@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { findPatient, leaveReview, getDoctors, getPatientAppointments, getPatientVisits } from '../services/api';
+import { findPatient, leaveReview, getDoctors, getPatientAppointments, getPatientVisits, getPatientActiveQueue } from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, MessageSquare, User, Search, ShieldCheck, CheckCircle2, Calendar, History, FileText, Droplet, Phone, Mail, Activity } from 'lucide-react';
+import { Star, MessageSquare, User, Search, ShieldCheck, CheckCircle2, Calendar, History, FileText, Droplet, Phone, Mail, Activity, Ticket } from 'lucide-react';
+import MyTokenCard from '../components/MyTokenCard';
 
 const PatientAccess = () => {
   const [patient, setPatient] = useState(null);
@@ -12,6 +13,7 @@ const PatientAccess = () => {
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [activeQueue, setActiveQueue] = useState(null);
 
   const [reviewForm, setReviewForm] = useState({ doctor_id: '', rating: 5, comment: '' });
   const [reviewSuccess, setReviewSuccess] = useState(false);
@@ -36,12 +38,14 @@ const PatientAccess = () => {
   const loadPatientData = async (patientId) => {
     setLoading(true);
     try {
-      const [appts, vsts] = await Promise.all([
+      const [appts, vsts, activeTok] = await Promise.all([
         getPatientAppointments(patientId),
-        getPatientVisits(patientId)
+        getPatientVisits(patientId),
+        getPatientActiveQueue(patientId)
       ]);
       setAppointments(appts || []);
       setVisits(vsts || []);
+      setActiveQueue(activeTok || null);
     } catch (err) {
       console.error("Error loading patient extra data", err);
     } finally {
@@ -88,13 +92,13 @@ const PatientAccess = () => {
            <User size={48} fill="white" />
         </div>
         <h1 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>Access Your <span style={{ color: 'var(--primary)' }}>Portal</span>.</h1>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem' }}>Enter your Phone Number or Medical Record Number (MRN) to access your personalized health dashboard and history.</p>
+        <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem' }}>Enter your Phone Number or Patient ID (PID) to access your personalized health dashboard and history.</p>
         
         <div className="glass" style={{ padding: '2rem' }}>
            <div style={{ display: 'flex', gap: '0.5rem' }}>
               <input 
                 type="text" 
-                placeholder="0712 XXX XXX or MRN000..." 
+                placeholder="0712 XXX XXX or PID000..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ flex: 1 }}
@@ -119,7 +123,7 @@ const PatientAccess = () => {
             </div>
             <div>
                <h2 style={{ fontSize: '1.5rem' }}>{patient.first_name} {patient.last_name}</h2>
-               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>MRN: {patient.mrn} • Patient since {new Date(patient.created_at).getFullYear()}</p>
+               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>PID: {patient.mrn} • Patient since {new Date(patient.created_at).getFullYear()}</p>
             </div>
          </div>
          <button className="btn btn-ghost btn-sm" onClick={() => {setPatient(null); setAppointments([]); setVisits([]);}}>Logout</button>
@@ -139,9 +143,14 @@ const PatientAccess = () => {
             <button className={`btn ${activeTab === 'review' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('review')} style={{ width: '100%', marginBottom: '0.5rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                <MessageSquare size={18} /> Review Specialists
             </button>
-            <button className={`btn ${activeTab === 'security' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('security')} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button className={`btn ${activeTab === 'security' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('security')} style={{ width: '100%', marginBottom: '0.5rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                <ShieldCheck size={18} /> Security Settings
             </button>
+            {activeQueue && (
+              <button className={`btn ${activeTab === 'token' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('token')} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--secondary)', border: '1px solid rgba(16, 185, 129, 0.2)', background: activeTab === 'token' ? 'rgba(16, 185, 129, 0.1)' : 'transparent' }}>
+                 <Ticket size={18} /> My Live Token
+              </button>
+            )}
          </div>
 
          <div className="glass" style={{ padding: '2rem', minHeight: '400px' }}>
@@ -150,6 +159,21 @@ const PatientAccess = () => {
                     <h3 style={{ fontSize: '1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <User className="text-primary" size={24} /> Profile Overview
                     </h3>
+                    
+                    {activeQueue && (
+                      <div className="glass fade-in" style={{ padding: '1.5rem', marginBottom: '2rem', background: 'linear-gradient(135deg, rgba(6, 85, 144, 0.05), rgba(34, 197, 94, 0.05))', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                               <h4 style={{ color: 'var(--secondary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <Ticket size={18} /> You have an active token!
+                               </h4>
+                               <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Token {activeQueue.token_number} is currently {activeQueue.status}.</p>
+                            </div>
+                            <button className="btn btn-primary btn-sm" onClick={() => setActiveTab('token')}>View Token Card</button>
+                         </div>
+                      </div>
+                    )}
+
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '1.5rem' }}>
                         <div className="glass" style={{ padding: '1.5rem', background: 'rgba(255,255,255,0.5)' }}>
                              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Date of Birth</p>
@@ -353,6 +377,18 @@ const PatientAccess = () => {
                      </div>
                      <button className="btn btn-primary btn-sm">Enable</button>
                   </div>
+               </div>
+            )}
+
+            {activeTab === 'token' && activeQueue && (
+               <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                  <h3 style={{ fontSize: '1.5rem', marginBottom: '1rem', width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Ticket className="text-primary" size={24} /> Your Digital Token
+                  </h3>
+                  <MyTokenCard patientToken={activeQueue} />
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '400px', textAlign: 'center', marginTop: '1rem' }}>
+                    Please show this token at the Nursing Station or Consultation room when called.
+                  </p>
                </div>
             )}
          </div>
